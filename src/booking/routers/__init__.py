@@ -1,1 +1,1 @@
-from booking.routers import auth, staff, system  # noqa: F401
+from booking.routers import auth, events, pages, staff, system  # noqa: F401

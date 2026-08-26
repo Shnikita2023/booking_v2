@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Uuid
+from sqlalchemy import DateTime, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from booking.models.base import (
@@ -44,3 +44,12 @@ class RefreshToken(UUIDPkMixin, TimestampMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+
+
+class InfoPage(UUIDPkMixin, TimestampMixin, VersionedMixin, Base):
+    __tablename__ = "info_pages"
+
+    slug: Mapped[str] = mapped_column(String(128), unique=True)
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(), default=None)

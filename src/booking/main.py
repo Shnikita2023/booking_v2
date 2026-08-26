@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from booking.core.config import get_settings
 from booking.core.errors import install_error_handlers
 from booking.core.logging import RequestIdMiddleware, setup_logging
-from booking.routers import auth, staff, system
+from booking.routers import auth, events, pages, staff, system
 
 
 def create_app() -> FastAPI:
@@ -19,6 +19,8 @@ def create_app() -> FastAPI:
     app.include_router(system.router)
     app.include_router(auth.router)
     app.include_router(staff.router)
+    app.include_router(events.router)
+    app.include_router(pages.router)
     return app
 
 
