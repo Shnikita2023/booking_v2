@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated, Any
 
 import jwt as pyjwt
-from fastapi import Depends
+from fastapi import Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,9 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 def _decode_access(token: str) -> dict[str, Any]:
     payload = security.decode_token(token, "access")
     if payload is None:
-        raise AppError("Invalid token", code="invalid_token", status_code=401)
+        raise AppError(
+            "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+        )
     return payload
 
 
@@ -34,24 +36,32 @@ async def get_current_principal(
     session: AsyncSession = Depends(get_session),
 ) -> Principal:
     if credentials is None:
-        raise AppError("Not authenticated", code="not_authenticated", status_code=401)
+        raise AppError(
+            "Not authenticated", code="not_authenticated", status_code=status.HTTP_401_UNAUTHORIZED
+        )
     try:
         payload = _decode_access(credentials.credentials)
         user_type = UserType(payload["ut"])
         user_id = uuid.UUID(payload["sub"])
     except (KeyError, ValueError, pyjwt.PyJWTError) as exc:
-        raise AppError("Invalid token", code="invalid_token", status_code=401) from exc
+        raise AppError(
+            "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+        ) from exc
 
     role: RoleCode | None = None
     raw_role = payload.get("role")
     if user_type == UserType.SYSTEM_USER:
         staff = await SystemUserRepository(session).get(user_id)
         if staff is None or not staff.is_active:
-            raise AppError("Invalid token", code="invalid_token", status_code=401)
+            raise AppError(
+                "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+            )
         role_entity = await RoleRepository(session).get(staff.role_id)
         role = role_entity.code if role_entity else None
     elif raw_role is not None:
-        raise AppError("Invalid token", code="invalid_token", status_code=401)
+        raise AppError(
+            "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+        )
     return Principal(user_type=user_type, user_id=user_id, role=role)
 
 
@@ -72,7 +82,7 @@ def require_role(*allowed: RoleCode) -> Any:
 
     async def dependency(principal: Principal) -> Principal:
         if principal.user_type != UserType.SYSTEM_USER or principal.role not in allowed:
-            raise AppError("Forbidden", code="forbidden", status_code=403)
+            raise AppError("Forbidden", code="forbidden", status_code=status.HTTP_403_FORBIDDEN)
         return principal
 
     return dependency
@@ -81,7 +91,7 @@ def require_role(*allowed: RoleCode) -> Any:
 async def require_client(principal: Principal = Depends(get_current_principal)) -> Principal:
     """Allow only authenticated clients; staff gets 403, anonymous 401."""
     if principal.user_type != UserType.CLIENT:
-        raise AppError("Forbidden", code="forbidden", status_code=403)
+        raise AppError("Forbidden", code="forbidden", status_code=status.HTTP_403_FORBIDDEN)
     return principal
 
 

@@ -2,6 +2,7 @@
 
 import uuid
 
+from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.errors import AppError
@@ -15,16 +16,16 @@ class EventService:
         self._events = EventRepository(session)
         self._pages = InfoPageRepository(session)
 
-    async def list_on_sale(
-        self, *, limit: int, offset: int
-    ) -> tuple[list[Event], int]:
+    async def list_on_sale(self, *, limit: int, offset: int) -> tuple[list[Event], int]:
         events, total = await self._events.list_on_sale(limit=limit, offset=offset)
         return list(events), total
 
     async def get_public(self, event_id: uuid.UUID) -> Event:
         event = await self._events.get_on_sale(event_id)
         if event is None:
-            raise AppError("Event not found", code="event_not_found", status_code=404)
+            raise AppError(
+                "Event not found", code="event_not_found", status_code=status.HTTP_404_NOT_FOUND
+            )
         return event
 
     async def sync_price(self, event: Event) -> Event:
@@ -41,5 +42,7 @@ class EventService:
     async def get_page(self, slug: str) -> InfoPage:
         page = await self._pages.get_by_slug(slug)
         if page is None:
-            raise AppError("Page not found", code="page_not_found", status_code=404)
+            raise AppError(
+                "Page not found", code="page_not_found", status_code=status.HTTP_404_NOT_FOUND
+            )
         return page

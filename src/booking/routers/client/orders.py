@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
 
 from booking.core.deps import ClientPrincipal, SessionDep
 from booking.core.dto import OrderItem
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/orders", tags=["client-orders"])
 
 @router.post(
     "",
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Create a reservation",
     description="Reserve tickets for an on-sale event. Quota is held for the "
     "reservation TTL; the order starts in the RESERVED state.",
@@ -42,7 +42,7 @@ async def create_order(
 
 @router.post(
     "/{order_id}/pay",
-    status_code=200,
+    status_code=status.HTTP_200_OK,
     summary="Pay for a reservation",
     description="Mark a RESERVED order as PAID. Payment is stubbed in this step; "
     "real uniPayment integration lands in step 8.",
@@ -61,7 +61,7 @@ async def pay_order(
 
 @router.post(
     "/{order_id}/cancel",
-    status_code=200,
+    status_code=status.HTTP_200_OK,
     summary="Cancel a reservation",
     description="Cancel a RESERVED order and release its quota. Paid orders "
     "cannot be cancelled; already-cancelled orders are idempotent.",
@@ -72,17 +72,14 @@ async def cancel_order(
     principal: ClientPrincipal,
     session: SessionDep,
 ) -> OrderRead:
-    order = await OrderService(session).cancel(
-        order_id=order_id, client_id=principal.user_id
-    )
+    order = await OrderService(session).cancel(order_id=order_id, client_id=principal.user_id)
     return OrderRead.from_order(order)
 
 
 @router.get(
     "",
     summary="List client orders",
-    description="Return a paginated list of the authenticated client's orders "
-    "with their tickets.",
+    description="Return a paginated list of the authenticated client's orders with their tickets.",
     response_model=OrderListResponse,
 )
 async def list_orders(
@@ -94,6 +91,4 @@ async def list_orders(
     orders, total = await OrderService(session).list_for_client(
         principal.user_id, limit=limit, offset=offset
     )
-    return OrderListResponse(
-        items=[OrderRead.from_order(order) for order in orders], total=total
-    )
+    return OrderListResponse(items=[OrderRead.from_order(order) for order in orders], total=total)

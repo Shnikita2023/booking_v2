@@ -2,10 +2,9 @@
 
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from starlette import status
 
 
 class AppError(Exception):
@@ -36,12 +35,9 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         errors: list[dict[str, Any]] = [
-            {"loc": [str(loc) for loc in err["loc"]], "msg": err["msg"]}
-            for err in exc.errors()
+            {"loc": [str(loc) for loc in err["loc"]], "msg": err["msg"]} for err in exc.errors()
         ]
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

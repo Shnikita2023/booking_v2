@@ -46,7 +46,9 @@ async def _me_payload(principal: Principal, session: AsyncSession) -> MeResponse
     if principal.user_type == UserType.CLIENT:
         client: Client | None = await ClientRepository(session).get(principal.user_id)
         if client is None:
-            raise AppError("Invalid token", code="invalid_token", status_code=401)
+            raise AppError(
+                "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+            )
         return MeResponse(
             id=client.id,
             email=client.email,
@@ -54,11 +56,11 @@ async def _me_payload(principal: Principal, session: AsyncSession) -> MeResponse
             full_name=client.full_name,
             discount_percent=client.discount_percent,
         )
-    staff: SystemUser | None = await SystemUserRepository(session).get(
-        principal.user_id
-    )
+    staff: SystemUser | None = await SystemUserRepository(session).get(principal.user_id)
     if staff is None:
-        raise AppError("Invalid token", code="invalid_token", status_code=401)
+        raise AppError(
+            "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+        )
     return MeResponse(
         id=staff.id,
         email=staff.email,
@@ -73,9 +75,7 @@ async def _me_payload(principal: Principal, session: AsyncSession) -> MeResponse
     description="Return the profile of the authenticated client or staff member.",
     response_model=MeResponse,
 )
-async def me(
-    principal: CurrentPrincipal, session: SessionDep
-) -> MeResponse:
+async def me(principal: CurrentPrincipal, session: SessionDep) -> MeResponse:
     return await _me_payload(principal, session)
 
 
@@ -86,9 +86,7 @@ async def me(
     response_model=TokenResponse,
 )
 async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
-    pair = await AuthService(session).client_login(
-        email=body.email, password=body.password
-    )
+    pair = await AuthService(session).client_login(email=body.email, password=body.password)
     return TokenResponse(**asdict(pair))
 
 
@@ -110,7 +108,5 @@ async def refresh(body: RefreshRequest, session: SessionDep) -> TokenResponse:
     description="Revoke the current refresh token (single-session policy).",
     response_model=None,
 )
-async def logout(
-    principal: CurrentPrincipal, session: SessionDep
-) -> None:
+async def logout(principal: CurrentPrincipal, session: SessionDep) -> None:
     await AuthService(session).logout(principal)

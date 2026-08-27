@@ -3,6 +3,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.dto import Principal, TokenPair
@@ -28,7 +29,9 @@ def _ensure_utc(value: datetime | None) -> datetime | None:
 def _extract_jti(refresh_token: str) -> uuid.UUID:
     payload = security.decode_token(refresh_token, "refresh")
     if payload is None:
-        raise AppError("Invalid token", code="invalid_token", status_code=401)
+        raise AppError(
+            "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+        )
     return uuid.UUID(payload["jti"])
 
 
@@ -50,7 +53,7 @@ class AuthService:
     ) -> Client:
         if await self._clients.get_by_email(email) is not None:
             raise AppError(
-                "Email already registered", code="email_taken", status_code=409
+                "Email already registered", code="email_taken", status_code=status.HTTP_409_CONFLICT
             )
         client = await self._clients.create(
             email=email,
@@ -65,9 +68,7 @@ class AuthService:
     async def client_login(self, *, email: str, password: str) -> TokenPair:
         client = await self._clients.get_by_email(email)
         self._ensure_not_locked(client.locked_until if client else None)
-        valid = client is not None and security.verify_password(
-            password, client.password_hash
-        )
+        valid = client is not None and security.verify_password(password, client.password_hash)
         if not valid or client is None:
             await self._register_failure(client)
             raise _login_failure_result(client)
@@ -96,16 +97,18 @@ class AuthService:
     async def refresh(self, refresh_token: str) -> TokenPair:
         payload = security.decode_token(refresh_token, "refresh")
         stored = (
-            await self._tokens.get_active_by_jti(payload["jti"])
-            if payload is not None
-            else None
+            await self._tokens.get_active_by_jti(payload["jti"]) if payload is not None else None
         )
         if payload is None or stored is None:
-            raise AppError("Invalid token", code="invalid_token", status_code=401)
+            raise AppError(
+                "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+            )
         user_type = UserType(payload["ut"])
         user_id = uuid.UUID(payload["sub"])
         if user_type == UserType.SYSTEM_USER and await self._get_role(user_id) is None:
-            raise AppError("Invalid token", code="invalid_token", status_code=401)
+            raise AppError(
+                "Invalid token", code="invalid_token", status_code=status.HTTP_401_UNAUTHORIZED
+            )
         await self._tokens.revoke(stored)
         pair = await self._issue_pair(user_type, user_id)
         await self._session.commit()
@@ -117,16 +120,12 @@ class AuthService:
 
     async def _issue_pair(self, user_type: UserType, user_id: uuid.UUID) -> TokenPair:
         extra: dict[str, str] = {"ut": user_type.value}
-        role_claim = (
-            await self._get_role(user_id) if user_type == UserType.SYSTEM_USER else None
-        )
+        role_claim = await self._get_role(user_id) if user_type == UserType.SYSTEM_USER else None
         if role_claim is not None:
             extra["role"] = role_claim.value
         subject = str(user_id)
         access, _ = security.create_token("access", subject, extra_claims=extra)
-        refresh, expires_at = security.create_token(
-            "refresh", subject, extra_claims=extra
-        )
+        refresh, expires_at = security.create_token("refresh", subject, extra_claims=extra)
         await self._tokens.create(
             user_type=user_type,
             user_id=user_id,
@@ -151,7 +150,7 @@ class AuthService:
             raise AppError(
                 f"Account locked, retry after {retry_after}s",
                 code="account_locked",
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
             )
 
     async def _register_failure(self, user: Client | SystemUser | None) -> None:
@@ -172,8 +171,8 @@ def _login_failure_result(user: Client | SystemUser | None) -> AppError:
         return AppError(
             f"Account locked, retry after {retry_after}s",
             code="account_locked",
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
         )
     return AppError(
-        "Invalid credentials", code="invalid_credentials", status_code=401
+        "Invalid credentials", code="invalid_credentials", status_code=status.HTTP_401_UNAUTHORIZED
     )
