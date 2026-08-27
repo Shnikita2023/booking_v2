@@ -1,5 +1,4 @@
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -8,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.config import get_settings
 from booking.core.errors import AppError
-from booking.models.events import TicketType
+from booking.dto import OrderItem
 from booking.models.orders import (
     Order,
     OrderStatus,
@@ -23,12 +22,6 @@ from booking.repositories.orders import (
     PaymentRepository,
     TicketRepository,
 )
-
-
-@dataclass(slots=True)
-class OrderItem:
-    ticket_type_id: uuid.UUID
-    quantity: int
 
 
 class OrderService:
@@ -52,7 +45,15 @@ class OrderService:
             raise AppError("Sales paused", code="sales_paused", status_code=409)
 
         total = Decimal(0)
-        locked: list[TicketType] = []
+        ttl = timedelta(minutes=get_settings().reservation_ttl_min)
+        order = await self._orders.create(
+            client_id=client_id,
+            event_id=event_id,
+            status=OrderStatus.RESERVED,
+            total_amount=total,
+            reserved_until=datetime.now(UTC) + ttl,
+        )
+        await self._session.refresh(order, ["tickets"])
         for item in items:
             ticket_type = await self._ticket_types.lock(item.ticket_type_id)
             if ticket_type is None or ticket_type.deleted_at is not None:
@@ -65,36 +66,20 @@ class OrderService:
                 )
             ticket_type.sold += item.quantity
             total += ticket_type.price * item.quantity
-            locked.append(ticket_type)
-
-        ttl = timedelta(minutes=get_settings().reservation_ttl_min)
-        order = await self._orders.create(
-            client_id=client_id,
-            event_id=event_id,
-            status=OrderStatus.RESERVED,
-            total_amount=total,
-            reserved_until=datetime.now(UTC) + ttl,
-        )
-        for item in items:
-            ticket_type = next(
-                t for t in locked if t.id == item.ticket_type_id
-            )
             for _ in range(item.quantity):
-                self._session.add(
+                order.tickets.append(
                     Ticket(
-                        order_id=order.id,
                         ticket_type_id=item.ticket_type_id,
                         price=ticket_type.price,
                         status=TicketStatus.ACTIVE,
                     )
                 )
+        order.total_amount = total
         await self._payments.create(
             order_id=order.id, status=PaymentStatus.PENDING, amount=total
         )
         await self._session.commit()
-        loaded = await self._orders.get_with_tickets(order.id)
-        assert loaded is not None
-        return loaded
+        return order
 
     async def confirm_payment(
         self, *, order_id: uuid.UUID, client_id: uuid.UUID
@@ -110,9 +95,7 @@ class OrderService:
         order.reserved_until = None
         await self._set_payment_status(order.id, PaymentStatus.SUCCEEDED)
         await self._session.commit()
-        loaded = await self._orders.get_with_tickets(order.id)
-        assert loaded is not None
-        return loaded
+        return order
 
     async def cancel(self, *, order_id: uuid.UUID, client_id: uuid.UUID) -> Order:
         order = await self._orders.get_owned(order_id, client_id)
@@ -124,18 +107,14 @@ class OrderService:
                 status_code=409,
             )
         if order.status == OrderStatus.CANCELLED:
-            loaded = await self._orders.get_with_tickets(order.id)
-            assert loaded is not None
-            return loaded
+            return order
         await self._release_quota(order)
         order.status = OrderStatus.CANCELLED
         for ticket in order.tickets:
             ticket.status = TicketStatus.CANCELLED
         await self._set_payment_status(order.id, PaymentStatus.FAILED)
         await self._session.commit()
-        loaded = await self._orders.get_with_tickets(order.id)
-        assert loaded is not None
-        return loaded
+        return order
 
     async def list_for_client(
         self, client_id: uuid.UUID, *, limit: int = 50, offset: int = 0

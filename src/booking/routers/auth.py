@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.deps import CurrentPrincipal, SessionDep
 from booking.core.errors import AppError
+from booking.dto import Principal
 from booking.models.clients import Client, UserType
 from booking.models.users import SystemUser
 from booking.repositories.clients import ClientRepository
@@ -16,7 +17,7 @@ from booking.schemas.auth import (
     RegisterRequest,
     TokenResponse,
 )
-from booking.services.auth_service import AuthService, Principal
+from booking.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

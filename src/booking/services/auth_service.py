@@ -1,10 +1,10 @@
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.errors import AppError
+from booking.dto import Principal, TokenPair
 from booking.models.clients import Client, UserType
 from booking.models.users import RoleCode, SystemUser
 from booking.repositories.clients import ClientRepository
@@ -16,20 +16,6 @@ MAX_FAILED_ATTEMPTS = 3
 LOCK_MINUTES = 30
 
 
-@dataclass(slots=True)
-class TokenPair:
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-@dataclass(slots=True)
-class Principal:
-    user_type: UserType
-    user_id: uuid.UUID
-    role: RoleCode | None = None
-
-
 def _ensure_utc(value: datetime | None) -> datetime | None:
     """Normalize DB-provided datetime to timezone-aware UTC."""
     if value is None or value.tzinfo is not None:
@@ -39,7 +25,8 @@ def _ensure_utc(value: datetime | None) -> datetime | None:
 
 def _extract_jti(refresh_token: str) -> uuid.UUID:
     payload = security.decode_token(refresh_token, "refresh")
-    assert payload is not None
+    if payload is None:
+        raise AppError("Invalid token", code="invalid_token", status_code=401)
     return uuid.UUID(payload["jti"])
 
 

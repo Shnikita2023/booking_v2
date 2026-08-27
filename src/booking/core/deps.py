@@ -8,12 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.errors import AppError
 from booking.db.engine import get_session
+from booking.dto import Principal
 from booking.models.clients import Client, UserType
 from booking.models.users import RoleCode
 from booking.repositories.clients import ClientRepository
 from booking.repositories.users import RoleRepository, SystemUserRepository
 from booking.services import security
-from booking.services.auth_service import Principal
 
 _bearer = HTTPBearer(auto_error=False)
 

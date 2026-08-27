@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Query
 
 from booking.core.deps import ClientPrincipal, SessionDep
+from booking.dto import OrderItem
 from booking.models.orders import Order
 from booking.schemas.order import (
     OrderCreateRequest,
@@ -10,7 +11,7 @@ from booking.schemas.order import (
     OrderRead,
     TicketRead,
 )
-from booking.services.order_service import OrderItem, OrderService
+from booking.services.order_service import OrderService
 
 router = APIRouter(prefix="/api/v1/orders", tags=["client-orders"])
 

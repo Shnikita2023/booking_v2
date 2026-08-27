@@ -56,11 +56,15 @@ class OrderRepository(BaseRepository[Order]):
         return orders, total
 
     async def list_expired(self, now: object) -> Sequence[Order]:
-        stmt = select(Order).where(
-            Order.status == OrderStatus.RESERVED,
-            Order.reserved_until.is_not(None),
-            Order.reserved_until < now,
-            Order.deleted_at.is_(None),
+        stmt = (
+            select(Order)
+            .where(
+                Order.status == OrderStatus.RESERVED,
+                Order.reserved_until.is_not(None),
+                Order.reserved_until < now,
+                Order.deleted_at.is_(None),
+            )
+            .options(selectinload(Order.tickets))
         )
         result = await self._session.execute(stmt)
         return result.scalars().all()
