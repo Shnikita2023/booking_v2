@@ -1,13 +1,16 @@
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import httpx
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.models.clients import InfoPage
-from booking.models.events import Event, EventStatus
+from booking.models.events import Event, EventStatus, TicketType
+from booking.repositories.event import EventRepository
+from booking.services.event_service import EventService
 
 EventFactory = Callable[..., Awaitable[Event]]
 PageFactory = Callable[..., Awaitable[InfoPage]]
@@ -134,3 +137,22 @@ async def test_info_page_by_slug(
     missing = await client.get("/api/v1/pages/nope")
     assert missing.status_code == 404
     assert missing.json()["code"] == "page_not_found"
+
+
+async def test_event_price_is_derived_from_ticket_types_bc(
+    web_session: AsyncSession, event_factory: EventFactory
+) -> None:
+    event = await event_factory(price=None)
+    assert event.price is None
+
+    for value in (Decimal("2000.00"), Decimal("999.00"), Decimal("1500.00")):
+        web_session.add(
+            TicketType(event_id=event.id, name="Тариф", price=value, quota=10)
+        )
+    await web_session.commit()
+
+    await EventService(web_session).sync_price(event)
+
+    refreshed = await EventRepository(web_session).get(event.id)
+    assert refreshed is not None
+    assert refreshed.price == Decimal("999.00")

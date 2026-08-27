@@ -1,10 +1,11 @@
 import uuid
 from collections.abc import Sequence
+from decimal import Decimal
 
 from sqlalchemy import func, select
 
 from booking.models.clients import InfoPage
-from booking.models.events import Event, EventStatus
+from booking.models.events import Event, EventStatus, TicketType
 from booking.repositories.base import BaseRepository
 
 
@@ -35,6 +36,14 @@ class EventRepository(BaseRepository[Event]):
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def active_min_price(self, event_id: uuid.UUID) -> Decimal | None:
+        """Source of truth for the display price: cheapest active ticket type."""
+        stmt = select(func.min(TicketType.price)).where(
+            TicketType.event_id == event_id,
+            TicketType.deleted_at.is_(None),
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none()
 
 
 class InfoPageRepository(BaseRepository[InfoPage]):

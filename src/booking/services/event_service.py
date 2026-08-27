@@ -25,6 +25,12 @@ class EventService:
             raise AppError("Event not found", code="event_not_found", status_code=404)
         return event
 
+    async def sync_price(self, event: Event) -> Event:
+        """Recompute the display price from active ticket types (source of truth)."""
+        min_price = await self._events.active_min_price(event.id)
+        await self._events.update(event, price=min_price)
+        return event
+
     async def count_free_tickets(self, event: Event) -> int | None:
         """Real counting arrives with the tickets table in step 5."""
         if not event.show_free_tickets:
