@@ -264,3 +264,56 @@ async def test_concurrent_cleanup_no_double_release(
 
     await web_session.refresh(ticket_type, ["sold"])
     assert ticket_type.sold == 0
+
+
+async def test_cleanup_vs_cancel_no_double_release(
+    web_session: AsyncSession,
+    client_user: tuple[uuid.UUID, str],
+    on_sale_event: tuple[Event, TicketType],
+    pg_engine: AsyncEngine,
+) -> None:
+    user_id, _ = client_user
+    event, ticket_type = on_sale_event
+
+    order = await OrderService(web_session).reserve(
+        client_id=user_id,
+        event_id=event.id,
+        items=[OrderItem(ticket_type_id=ticket_type.id, quantity=3)],
+    )
+    order.reserved_until = datetime.now(UTC) - timedelta(minutes=1)
+    await web_session.commit()
+
+    factory = async_sessionmaker(pg_engine, expire_on_commit=False)
+    async with factory() as s1, factory() as s2:
+        await asyncio.gather(
+            OrderService(s1).cleanup_expired(),
+            OrderService(s2).cancel(order_id=order.id, client_id=user_id),
+        )
+
+    await web_session.refresh(ticket_type, ["sold"])
+    assert ticket_type.sold == 0
+
+
+async def test_cancel_already_cancelled_is_idempotent(
+    web_session: AsyncSession,
+    client_user: tuple[uuid.UUID, str],
+    on_sale_event: tuple[Event, TicketType],
+) -> None:
+    user_id, _ = client_user
+    event, ticket_type = on_sale_event
+
+    order = await OrderService(web_session).reserve(
+        client_id=user_id,
+        event_id=event.id,
+        items=[OrderItem(ticket_type_id=ticket_type.id, quantity=3)],
+    )
+    await OrderService(web_session).cancel(order_id=order.id, client_id=user_id)
+    before = (await web_session.get(TicketType, ticket_type.id)).sold
+
+    second = await OrderService(web_session).cancel(
+        order_id=order.id, client_id=user_id
+    )
+    after = (await web_session.get(TicketType, ticket_type.id)).sold
+    assert second.status.value == "cancelled"
+    assert before == 0
+    assert after == before

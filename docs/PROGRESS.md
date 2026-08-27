@@ -109,10 +109,15 @@
   `python -m booking.worker` или `python -m booking.cli cleanup-worker`.
   API-процесс больше не держит фоновую задачу (убран `lifespan` в `main.py`) —
   event loop освобождён, нагрузка не дублируется по 5 репликам.
-- Добавлен **`pg_advisory_xact_lock`** в начале `OrderService.cleanup_expired`:
-  очистку за раз выполняет только одна транзакция/воркер → двойное списание
-  квоты при нескольких воркерах исключено (покрыто тестом
-  `test_concurrent_cleanup_no_double_release`).
+- Высвобождение квоты сделано корректным при любом числе воркеров и для
+  любого чередования кода: строка `orders` блокируется при списании
+  (`list_expired` — `SELECT … FOR UPDATE SKIP LOCKED`; `cancel` грузит заказ
+  `FOR UPDATE`). Каждый заказ обрабатывает ровно одна транзакция, списание
+  идемпотентно (`if status != RESERVED: continue` / повторная проверка под
+  блокировкой). Закрыт race cleanup↔cleanup И cleanup↔cancel (был и при
+  одном воркере). `pg_advisory_xact_lock` не нужен и убран. Покрыто тестами
+  `test_concurrent_cleanup_no_double_release` и
+  `test_cleanup_vs_cancel_no_double_release`.
 - Миграция `0005`: индекс `ix_orders_status_reserved_until` для быстрого скана
   просроченных (upgrade/downgrade проверены на живой БД).
 - `OrderService.__init__(session, settings=None)` — настройки инжектятся через

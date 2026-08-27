@@ -24,7 +24,7 @@ class OrderRepository(BaseRepository[Order]):
         return order
 
     async def get_owned(
-        self, order_id: uuid.UUID, client_id: uuid.UUID
+        self, order_id: uuid.UUID, client_id: uuid.UUID, *, lock: bool = False
     ) -> Order | None:
         stmt = (
             select(Order)
@@ -35,6 +35,8 @@ class OrderRepository(BaseRepository[Order]):
             )
             .options(selectinload(Order.tickets))
         )
+        if lock:
+            stmt = stmt.with_for_update()
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -65,6 +67,7 @@ class OrderRepository(BaseRepository[Order]):
                 Order.deleted_at.is_(None),
             )
             .options(selectinload(Order.tickets))
+            .with_for_update(skip_locked=True)
         )
         result = await self._session.execute(stmt)
         return result.scalars().all()

@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.config import Settings, get_settings
@@ -22,8 +22,6 @@ from booking.repositories.orders import (
     PaymentRepository,
     TicketRepository,
 )
-
-CLEANUP_ADVISORY_LOCK_KEY = 0x0A77C1E5
 
 
 class OrderService:
@@ -105,7 +103,7 @@ class OrderService:
         return order
 
     async def cancel(self, *, order_id: uuid.UUID, client_id: uuid.UUID) -> Order:
-        order = await self._orders.get_owned(order_id, client_id)
+        order = await self._orders.get_owned(order_id, client_id, lock=True)
         if order is None:
             raise AppError("Order not found", code="order_not_found", status_code=404)
         if order.status == OrderStatus.PAID:
@@ -140,15 +138,14 @@ class OrderService:
         return order
 
     async def cleanup_expired(self) -> int:
-        # Transaction-scoped advisory lock: only one process/transaction runs
-        # cleanup at a time, preventing duplicate quota release across replicas.
-        await self._session.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"), {"key": CLEANUP_ADVISORY_LOCK_KEY}
-        )
+        # Order rows are locked via SKIP LOCKED in list_expired, so each expired
+        # order is handled by exactly one transaction (across replicas too).
         now = datetime.now(UTC)
         expired = await self._orders.list_expired(now)
         count = 0
         for order in expired:
+            if order.status != OrderStatus.RESERVED:
+                continue
             await self._release_quota(order)
             order.status = OrderStatus.CANCELLED
             for ticket in order.tickets:
