@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from booking.core.dto import Principal, TokenPair
 from booking.core.errors import AppError
-from booking.dto import Principal, TokenPair
 from booking.models.clients import Client, UserType
 from booking.models.users import RoleCode, SystemUser
 from booking.repositories.clients import ClientRepository

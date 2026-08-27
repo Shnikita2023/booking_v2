@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import httpx
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from booking.models.events import Event, EventStatus, TicketType
 from booking.repositories.clients import ClientRepository
@@ -236,3 +236,31 @@ async def test_concurrent_reserve_no_oversell(
 
     detail = await client.get(f"/api/v1/events/{event.id}")
     assert detail.json()["free_tickets"] == 0
+
+
+async def test_concurrent_cleanup_no_double_release(
+    web_session: AsyncSession,
+    client_user: tuple[uuid.UUID, str],
+    on_sale_event: tuple[Event, TicketType],
+    pg_engine: AsyncEngine,
+) -> None:
+    user_id, _ = client_user
+    event, ticket_type = on_sale_event
+
+    order = await OrderService(web_session).reserve(
+        client_id=user_id,
+        event_id=event.id,
+        items=[OrderItem(ticket_type_id=ticket_type.id, quantity=3)],
+    )
+    order.reserved_until = datetime.now(UTC) - timedelta(minutes=1)
+    await web_session.commit()
+
+    factory = async_sessionmaker(pg_engine, expire_on_commit=False)
+    async with factory() as s1, factory() as s2:
+        await asyncio.gather(
+            OrderService(s1).cleanup_expired(),
+            OrderService(s2).cleanup_expired(),
+        )
+
+    await web_session.refresh(ticket_type, ["sold"])
+    assert ticket_type.sold == 0

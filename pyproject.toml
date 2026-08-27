@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
+    "apscheduler>=3.10",
 ]
 
 [project.optional-dependencies]
@@ -57,3 +58,7 @@ python_version = "3.12"
 mypy_path = "src"
 strict = true
 plugins = []
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*"]
+ignore_missing_imports = true

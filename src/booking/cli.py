@@ -8,6 +8,7 @@ from booking.db.engine import get_session_factory
 from booking.models.users import Role, RoleCode
 from booking.repositories.users import RoleRepository, SystemUserRepository
 from booking.services import security
+from booking.worker import run_worker
 
 
 async def create_staff(email: str, password: str, role_code: RoleCode) -> None:
@@ -39,10 +40,16 @@ def main() -> None:
     staff.add_argument("email")
     staff.add_argument("password")
     staff.add_argument("--role", default="admin", choices=[r.value for r in RoleCode])
+    worker = sub.add_parser(
+        "cleanup-worker", help="run the expired-reservation cleanup worker"
+    )
+    worker.add_argument("--interval", type=int, default=60, help="seconds between runs")
     args = parser.parse_args()
     get_settings()
     if args.command == "create-staff":
         asyncio.run(create_staff(args.email, args.password, RoleCode(args.role)))
+    elif args.command == "cleanup-worker":
+        asyncio.run(run_worker(args.interval))
 
 
 if __name__ == "__main__":

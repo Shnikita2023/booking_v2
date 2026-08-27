@@ -103,6 +103,26 @@
   роутера заказов), пересборка невозможна (корпоративный индекс nexus недоступен,
   см. риски). Поведение покрыто интеграционными тестами на реальном Postgres.
 
+### Шаг 5 (доработка) — надёжная очистка просроченных броней (2026-08-27)
+- Вынесена очистка из API в **отдельный воркер** (`src/booking/worker.py`) под
+  **APScheduler** (`AsyncIOScheduler`, интервал 60с, `max_instances=1`); запуск
+  `python -m booking.worker` или `python -m booking.cli cleanup-worker`.
+  API-процесс больше не держит фоновую задачу (убран `lifespan` в `main.py`) —
+  event loop освобождён, нагрузка не дублируется по 5 репликам.
+- Добавлен **`pg_advisory_xact_lock`** в начале `OrderService.cleanup_expired`:
+  очистку за раз выполняет только одна транзакция/воркер → двойное списание
+  квоты при нескольких воркерах исключено (покрыто тестом
+  `test_concurrent_cleanup_no_double_release`).
+- Миграция `0005`: индекс `ix_orders_status_reserved_until` для быстрого скана
+  просроченных (upgrade/downgrade проверены на живой БД).
+- `OrderService.__init__(session, settings=None)` — настройки инжектятся через
+  DI (по умолчанию `get_settings()`), TTL-конфиг не дёргается из глобала.
+- Внутренние DTO (`TokenPair`, `Principal`, `OrderItem`) перенесены в
+  `src/booking/core/dto.py` (рядом с `config/errors/deps`), корень пакета чист.
+- `docker-compose.yml`: добавлен сервис `worker` (тот же образ, команда
+  `python -m booking.worker`); `pyproject.toml`: добавлен `apscheduler`.
+- Тесты: 29 passed (в т.ч. новый тест безопасности advisory-лока).
+
 ### Шаг 4 — публичное API каталога (2026-08-25)
 - Миграция 0003: events, ticket_types, info_pages; downgrade/upgrade ок ✅
 - pytest: 20 passed — фильтр on_sale + soft-delete, пагинация+total, 404,

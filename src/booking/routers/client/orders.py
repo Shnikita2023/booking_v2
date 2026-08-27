@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Query
 
 from booking.core.deps import ClientPrincipal, SessionDep
-from booking.dto import OrderItem
+from booking.core.dto import OrderItem
 from booking.models.orders import Order
 from booking.schemas.order import (
     OrderCreateRequest,

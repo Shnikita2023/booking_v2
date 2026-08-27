@@ -6,9 +6,9 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from booking.core.dto import Principal
 from booking.core.errors import AppError
 from booking.db.engine import get_session
-from booking.dto import Principal
 from booking.models.clients import Client, UserType
 from booking.models.users import RoleCode
 from booking.repositories.clients import ClientRepository

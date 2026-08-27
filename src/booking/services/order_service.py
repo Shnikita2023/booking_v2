@@ -2,12 +2,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from booking.core.config import get_settings
+from booking.core.config import Settings, get_settings
+from booking.core.dto import OrderItem
 from booking.core.errors import AppError
-from booking.dto import OrderItem
 from booking.models.orders import (
     Order,
     OrderStatus,
@@ -23,10 +23,17 @@ from booking.repositories.orders import (
     TicketRepository,
 )
 
+CLEANUP_ADVISORY_LOCK_KEY = 0x0A77C1E5
+
 
 class OrderService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        settings: Settings | None = None,
+    ) -> None:
         self._session = session
+        self._settings = settings or get_settings()
         self._orders = OrderRepository(session)
         self._tickets = TicketRepository(session)
         self._payments = PaymentRepository(session)
@@ -45,7 +52,7 @@ class OrderService:
             raise AppError("Sales paused", code="sales_paused", status_code=409)
 
         total = Decimal(0)
-        ttl = timedelta(minutes=get_settings().reservation_ttl_min)
+        ttl = timedelta(minutes=self._settings.reservation_ttl_min)
         order = await self._orders.create(
             client_id=client_id,
             event_id=event_id,
@@ -133,6 +140,11 @@ class OrderService:
         return order
 
     async def cleanup_expired(self) -> int:
+        # Transaction-scoped advisory lock: only one process/transaction runs
+        # cleanup at a time, preventing duplicate quota release across replicas.
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": CLEANUP_ADVISORY_LOCK_KEY}
+        )
         now = datetime.now(UTC)
         expired = await self._orders.list_expired(now)
         count = 0

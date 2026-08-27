@@ -4,8 +4,8 @@ from fastapi import APIRouter, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.deps import CurrentPrincipal, SessionDep
+from booking.core.dto import Principal
 from booking.core.errors import AppError
-from booking.dto import Principal
 from booking.models.clients import Client, UserType
 from booking.models.users import SystemUser
 from booking.repositories.clients import ClientRepository
