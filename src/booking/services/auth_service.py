@@ -1,3 +1,5 @@
+"""Client and staff authentication, registration and session management."""
+
 import uuid
 from datetime import UTC, datetime, timedelta
 

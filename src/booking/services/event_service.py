@@ -1,3 +1,5 @@
+"""Public event catalogue reads and price synchronisation."""
+
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession

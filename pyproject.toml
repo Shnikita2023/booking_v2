@@ -14,6 +14,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
     "apscheduler>=3.10",
+    "uvloop>=0.19",
 ]
 
 [project.optional-dependencies]

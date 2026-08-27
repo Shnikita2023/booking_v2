@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import AsyncGenerator
 
-import pytest_asyncio
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.models.clients import Client
@@ -17,7 +17,7 @@ class ClientRepository(BaseRepository[Client]):
     model = Client
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def admin_role(db_session: AsyncSession) -> Role:
     role = Role(code=RoleCode.ADMIN, name="Administrator")
     db_session.add(role)
@@ -25,7 +25,7 @@ async def admin_role(db_session: AsyncSession) -> Role:
     return role
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def user_repo(db_session: AsyncSession) -> AsyncGenerator[SystemUserRepository, None]:
     yield SystemUserRepository(db_session)
 

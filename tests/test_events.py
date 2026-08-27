@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import httpx
-import pytest_asyncio
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.models.clients import InfoPage
@@ -16,7 +16,7 @@ EventFactory = Callable[..., Awaitable[Event]]
 PageFactory = Callable[..., Awaitable[InfoPage]]
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def event_factory(web_session: AsyncSession) -> EventFactory:
     async def make(
         *,
@@ -41,7 +41,7 @@ async def event_factory(web_session: AsyncSession) -> EventFactory:
     return make
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def page_factory(web_session: AsyncSession) -> PageFactory:
     async def make(
         slug: str = "about", title: str = "About", content: str = "Text"

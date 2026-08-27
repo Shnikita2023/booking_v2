@@ -1,3 +1,5 @@
+"""Public event catalogue endpoints."""
+
 import uuid
 
 from fastapi import APIRouter, Query
@@ -14,7 +16,13 @@ from booking.services.event_service import EventService
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="List events on sale",
+    description="Return a paginated public afisha of events currently on sale, "
+    "with computed free-ticket counts where enabled.",
+    response_model=EventListResponse,
+)
 async def list_events(
     session: SessionDep,
     limit: int = Query(default=20, ge=1, le=100),
@@ -40,7 +48,12 @@ async def list_events(
     return EventListResponse(items=items, total=total)
 
 
-@router.get("/{event_id}")
+@router.get(
+    "/{event_id}",
+    summary="Event details",
+    description="Return a single on-sale event with its computed free-ticket count.",
+    response_model=EventDetail,
+)
 async def get_event(event_id: uuid.UUID, session: SessionDep) -> EventDetail:
     event = await EventService(session).get_public(event_id)
     return EventDetail(

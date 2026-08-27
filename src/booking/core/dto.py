@@ -1,3 +1,5 @@
+"""Internal transport DTOs shared between layers."""
+
 import uuid
 from dataclasses import dataclass
 

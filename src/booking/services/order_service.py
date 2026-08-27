@@ -1,3 +1,5 @@
+"""Order lifecycle: reservation, payment, cancellation and TTL cleanup."""
+
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -41,6 +43,7 @@ class OrderService:
     async def reserve(
         self, *, client_id: uuid.UUID, event_id: uuid.UUID, items: list[OrderItem]
     ) -> Order:
+        """Create a RESERVED order, atomically reserving quota per ticket type."""
         if not items:
             raise AppError("Empty order", code="empty_order", status_code=400)
         event = await self._events.get_on_sale(event_id)
@@ -89,6 +92,7 @@ class OrderService:
     async def confirm_payment(
         self, *, order_id: uuid.UUID, client_id: uuid.UUID
     ) -> Order:
+        """Transition a RESERVED order to PAID and mark its payment succeeded."""
         order = await self._orders.get_owned(order_id, client_id)
         if order is None:
             raise AppError("Order not found", code="order_not_found", status_code=404)
@@ -103,6 +107,7 @@ class OrderService:
         return order
 
     async def cancel(self, *, order_id: uuid.UUID, client_id: uuid.UUID) -> Order:
+        """Cancel an order under row lock, releasing quota; idempotent if already cancelled."""
         order = await self._orders.get_owned(order_id, client_id, lock=True)
         if order is None:
             raise AppError("Order not found", code="order_not_found", status_code=404)
@@ -124,6 +129,7 @@ class OrderService:
     async def list_for_client(
         self, client_id: uuid.UUID, *, limit: int = 50, offset: int = 0
     ) -> tuple[list[Order], int]:
+        """Return a paginated list of a client's orders with their tickets."""
         orders, total = await self._orders.list_for_client(
             client_id, limit=limit, offset=offset
         )
@@ -132,14 +138,19 @@ class OrderService:
     async def get_client_order(
         self, *, order_id: uuid.UUID, client_id: uuid.UUID
     ) -> Order:
+        """Return a single client-owned order, or raise if not found."""
         order = await self._orders.get_owned(order_id, client_id)
         if order is None:
             raise AppError("Order not found", code="order_not_found", status_code=404)
         return order
 
     async def cleanup_expired(self) -> int:
-        # Order rows are locked via SKIP LOCKED in list_expired, so each expired
-        # order is handled by exactly one transaction (across replicas too).
+        """Cancel expired RESERVED orders, releasing quota exactly once per order.
+
+        Expired rows are locked with SKIP LOCKED in ``list_expired``, so exactly
+        one transaction (across replicas) handles each order; a status recheck
+        makes the release idempotent against a concurrent cancel.
+        """
         now = datetime.now(UTC)
         expired = await self._orders.list_expired(now)
         count = 0
@@ -157,6 +168,7 @@ class OrderService:
         return count
 
     async def _release_quota(self, order: Order) -> None:
+        """Return reserved ticket quantities to their ticket types (never below 0)."""
         by_type: dict[uuid.UUID, int] = {}
         for ticket in order.tickets:
             by_type[ticket.ticket_type_id] = by_type.get(ticket.ticket_type_id, 0) + 1
@@ -168,6 +180,7 @@ class OrderService:
     async def _set_payment_status(
         self, order_id: uuid.UUID, status: PaymentStatus
     ) -> None:
+        """Update the payment row linked to an order, if present."""
         stmt = await self._session.execute(
             select(Payment).where(Payment.order_id == order_id)
         )

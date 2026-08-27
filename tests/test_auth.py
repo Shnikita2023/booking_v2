@@ -1,5 +1,5 @@
 import httpx
-import pytest_asyncio
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,12 +7,12 @@ from booking.repositories.tokens import RefreshTokenRepository
 from booking.services.auth_service import AuthService
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def auth_service(db_session: AsyncSession) -> AuthService:
     return AuthService(db_session)
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def token_repo(db_session: AsyncSession) -> RefreshTokenRepository:
     return RefreshTokenRepository(db_session)
 

@@ -1,4 +1,4 @@
-import pytest_asyncio
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.models.users import Role, RoleCode
@@ -6,7 +6,7 @@ from booking.repositories.users import RoleRepository, SystemUserRepository
 from booking.services import security
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def admin_role(web_session: AsyncSession) -> Role:
     role = Role(code=RoleCode.ADMIN, name="Administrator")
     web_session.add(role)
@@ -14,7 +14,7 @@ async def admin_role(web_session: AsyncSession) -> Role:
     return role
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def staff_user(
     web_session: AsyncSession, admin_role: Role
 ) -> dict[str, str]:
@@ -28,6 +28,6 @@ async def staff_user(
     return {"id": str(user.id), "email": user.email}
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def role_repo(db_session: AsyncSession) -> RoleRepository:
     return RoleRepository(db_session)

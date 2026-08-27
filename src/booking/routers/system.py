@@ -1,3 +1,5 @@
+"""System-level endpoints such as health checks."""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
@@ -12,7 +14,12 @@ router = APIRouter(tags=["system"])
 EngineDep = Annotated[AsyncEngine, Depends(get_engine)]
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="Health check",
+    description="Report service and database availability and the running app version.",
+    response_model=None,
+)
 async def health(engine: EngineDep) -> JSONResponse:
     settings = get_settings()
     db_ok = await ping_db(engine)

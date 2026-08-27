@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import httpx
-import pytest_asyncio
+import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from booking.models.events import Event, EventStatus, TicketType
@@ -14,7 +14,7 @@ from booking.services import security
 from booking.services.order_service import OrderItem, OrderService
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def client_user(web_session: AsyncSession) -> tuple[uuid.UUID, str]:
     repo = ClientRepository(web_session)
     user = await repo.create(
@@ -29,7 +29,7 @@ async def client_user(web_session: AsyncSession) -> tuple[uuid.UUID, str]:
     return user.id, token
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def on_sale_event(web_session: AsyncSession) -> tuple[Event, TicketType]:
     event = Event(
         title="Show",

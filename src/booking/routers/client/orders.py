@@ -1,3 +1,5 @@
+"""Client order lifecycle endpoints: reserve, pay, cancel and list."""
+
 import uuid
 
 from fastapi import APIRouter, Query
@@ -14,7 +16,14 @@ from booking.services.order_service import OrderService
 router = APIRouter(prefix="/api/v1/orders", tags=["client-orders"])
 
 
-@router.post("", status_code=201)
+@router.post(
+    "",
+    status_code=201,
+    summary="Create a reservation",
+    description="Reserve tickets for an on-sale event. Quota is held for the "
+    "reservation TTL; the order starts in the RESERVED state.",
+    response_model=OrderRead,
+)
 async def create_order(
     body: OrderCreateRequest,
     principal: ClientPrincipal,
@@ -31,7 +40,14 @@ async def create_order(
     return OrderRead.from_order(order)
 
 
-@router.post("/{order_id}/pay", status_code=200)
+@router.post(
+    "/{order_id}/pay",
+    status_code=200,
+    summary="Pay for a reservation",
+    description="Mark a RESERVED order as PAID. Payment is stubbed in this step; "
+    "real uniPayment integration lands in step 8.",
+    response_model=OrderRead,
+)
 async def pay_order(
     order_id: uuid.UUID,
     principal: ClientPrincipal,
@@ -43,7 +59,14 @@ async def pay_order(
     return OrderRead.from_order(order)
 
 
-@router.post("/{order_id}/cancel", status_code=200)
+@router.post(
+    "/{order_id}/cancel",
+    status_code=200,
+    summary="Cancel a reservation",
+    description="Cancel a RESERVED order and release its quota. Paid orders "
+    "cannot be cancelled; already-cancelled orders are idempotent.",
+    response_model=OrderRead,
+)
 async def cancel_order(
     order_id: uuid.UUID,
     principal: ClientPrincipal,
@@ -55,7 +78,13 @@ async def cancel_order(
     return OrderRead.from_order(order)
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="List client orders",
+    description="Return a paginated list of the authenticated client's orders "
+    "with their tickets.",
+    response_model=OrderListResponse,
+)
 async def list_orders(
     principal: ClientPrincipal,
     session: SessionDep,

@@ -1,3 +1,5 @@
+"""Client and staff authentication endpoints."""
+
 from dataclasses import asdict
 
 from fastapi import APIRouter, status
@@ -22,7 +24,13 @@ from booking.services.auth_service import AuthService
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new client",
+    description="Create a client account with email and password.",
+    response_model=dict[str, str],
+)
 async def register(body: RegisterRequest, session: SessionDep) -> dict[str, str]:
     service = AuthService(session)
     client = await service.register_client(
@@ -59,14 +67,24 @@ async def _me_payload(principal: Principal, session: AsyncSession) -> MeResponse
     )
 
 
-@router.get("/me")
+@router.get(
+    "/me",
+    summary="Current principal profile",
+    description="Return the profile of the authenticated client or staff member.",
+    response_model=MeResponse,
+)
 async def me(
     principal: CurrentPrincipal, session: SessionDep
 ) -> MeResponse:
     return await _me_payload(principal, session)
 
 
-@router.post("/login")
+@router.post(
+    "/login",
+    summary="Client login",
+    description="Authenticate a client and issue access/refresh JWT tokens.",
+    response_model=TokenResponse,
+)
 async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
     pair = await AuthService(session).client_login(
         email=body.email, password=body.password
@@ -74,13 +92,24 @@ async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
     return TokenResponse(**asdict(pair))
 
 
-@router.post("/refresh")
+@router.post(
+    "/refresh",
+    summary="Refresh access token",
+    description="Exchange a valid refresh token for a new access/refresh pair.",
+    response_model=TokenResponse,
+)
 async def refresh(body: RefreshRequest, session: SessionDep) -> TokenResponse:
     pair = await AuthService(session).refresh(body.refresh_token)
     return TokenResponse(**asdict(pair))
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Logout",
+    description="Revoke the current refresh token (single-session policy).",
+    response_model=None,
+)
 async def logout(
     principal: CurrentPrincipal, session: SessionDep
 ) -> None:

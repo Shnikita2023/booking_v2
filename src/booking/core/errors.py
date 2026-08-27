@@ -1,3 +1,5 @@
+"""Application error types and FastAPI error handlers."""
+
 from typing import Any
 
 from fastapi import FastAPI, Request

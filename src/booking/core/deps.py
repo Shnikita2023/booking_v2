@@ -1,3 +1,5 @@
+"""Dependency wiring: sessions, authentication and RBAC."""
+
 import uuid
 from typing import Annotated, Any
 

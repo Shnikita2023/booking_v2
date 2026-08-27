@@ -1,7 +1,8 @@
+import asyncio
 from collections.abc import AsyncGenerator, Generator
 
 import pytest
-import pytest_asyncio
+import uvloop
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -15,6 +16,8 @@ from booking.db.engine import get_engine, get_session
 from booking.main import app
 from booking.models import Base
 
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
 pytest_plugins = ["tests.factories"]
 
 
@@ -24,7 +27,7 @@ def pg_container() -> Generator[PostgresContainer, None, None]:
         yield container
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest.fixture(scope="session")
 async def pg_engine(pg_container: PostgresContainer) -> AsyncGenerator[AsyncEngine, None]:
     url = pg_container.get_connection_url(driver="asyncpg")
     engine = create_async_engine(url)
@@ -32,9 +35,9 @@ async def pg_engine(pg_container: PostgresContainer) -> AsyncGenerator[AsyncEngi
     await engine.dispose()
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def db_schema(pg_engine: AsyncEngine) -> AsyncGenerator[None, None]:
-    """Fresh schema (real Postgres) for every test."""
+    """Fresh schema (real Postgres) recreated for every test."""
     async with pg_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
@@ -43,7 +46,7 @@ async def db_schema(pg_engine: AsyncEngine) -> AsyncGenerator[None, None]:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def db_session(
     db_schema: None, pg_engine: AsyncEngine
 ) -> AsyncGenerator[AsyncSession, None]:
@@ -52,17 +55,17 @@ async def db_session(
         yield session
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def web_session(
     db_schema: None, pg_engine: AsyncEngine
 ) -> AsyncGenerator[AsyncSession, None]:
-    """Session into the same DB the app under test uses."""
+    """Session bound to the same database the app under test uses."""
     factory = async_sessionmaker(pg_engine, expire_on_commit=False)
     async with factory() as session:
         yield session
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def client(
     db_schema: None, pg_engine: AsyncEngine
 ) -> AsyncGenerator[AsyncClient, None]:
