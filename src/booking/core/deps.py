@@ -74,3 +74,13 @@ def require_role(*allowed: RoleCode) -> Any:
         return principal
 
     return dependency
+
+
+async def require_client(principal: Principal = Depends(get_current_principal)) -> Principal:
+    """Allow only authenticated clients; staff gets 403, anonymous 401."""
+    if principal.user_type != UserType.CLIENT:
+        raise AppError("Forbidden", code="forbidden", status_code=403)
+    return principal
+
+
+ClientPrincipal = Annotated[Principal, Depends(require_client)]

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"
     access_ttl_min: int = 15
     refresh_ttl_days: int = 14
+    reservation_ttl_min: int = 15
 
 
 @lru_cache

@@ -32,10 +32,9 @@ class EventService:
         return event
 
     async def count_free_tickets(self, event: Event) -> int | None:
-        """Real counting arrives with the tickets table in step 5."""
         if not event.show_free_tickets:
             return None
-        return None
+        return await self._events.free_tickets(event.id)
 
     async def get_page(self, slug: str) -> InfoPage:
         page = await self._pages.get_by_slug(slug)

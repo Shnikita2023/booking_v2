@@ -45,11 +45,34 @@ class EventRepository(BaseRepository[Event]):
         )
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
+    async def free_tickets(self, event_id: uuid.UUID) -> int:
+        stmt = select(
+            func.coalesce(func.sum(TicketType.quota - TicketType.sold), 0)
+        ).where(
+            TicketType.event_id == event_id,
+            TicketType.deleted_at.is_(None),
+        )
+        return int((await self._session.execute(stmt)).scalar_one())
+
 
 class InfoPageRepository(BaseRepository[InfoPage]):
     model = InfoPage
 
     async def get_by_slug(self, slug: str) -> InfoPage | None:
         stmt = self._base_select().where(InfoPage.slug == slug)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+
+class TicketTypeRepository(BaseRepository[TicketType]):
+    model = TicketType
+
+    async def lock(self, ticket_type_id: uuid.UUID) -> TicketType | None:
+        """Row-level lock (FOR UPDATE) for atomic quota updates under concurrency."""
+        stmt = (
+            select(TicketType)
+            .where(TicketType.id == ticket_type_id)
+            .with_for_update()
+        )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()

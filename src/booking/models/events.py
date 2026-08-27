@@ -75,5 +75,6 @@ class TicketType(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, Base):
     name: Mapped[str] = mapped_column(String(128))
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     quota: Mapped[int]
+    sold: Mapped[int] = mapped_column(Integer, default=0)
 
     event: Mapped["Event"] = relationship(back_populates="ticket_types")
