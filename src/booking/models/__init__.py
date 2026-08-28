@@ -1,6 +1,7 @@
 from booking.models.base import Base
 from booking.models.clients import Client, InfoPage, RefreshToken, UserType
 from booking.models.events import Event, EventStatus, TicketType
+from booking.models.settings import SystemSetting
 from booking.models.users import Role, SystemUser
 
 __all__ = [
@@ -11,6 +12,7 @@ __all__ = [
     "InfoPage",
     "RefreshToken",
     "Role",
+    "SystemSetting",
     "SystemUser",
     "TicketType",
     "UserType",

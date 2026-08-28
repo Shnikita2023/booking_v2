@@ -80,7 +80,7 @@ async def get_optional_client(
 def require_role(*allowed: RoleCode) -> Any:
     """Dependency factory; use as `Annotated[Principal, Depends(require_role(...))]`."""
 
-    async def dependency(principal: Principal) -> Principal:
+    async def dependency(principal: Principal = Depends(get_current_principal)) -> Principal:
         if principal.user_type != UserType.SYSTEM_USER or principal.role not in allowed:
             raise AppError("Forbidden", code="forbidden", status_code=status.HTTP_403_FORBIDDEN)
         return principal
@@ -96,3 +96,30 @@ async def require_client(principal: Principal = Depends(get_current_principal)) 
 
 
 ClientPrincipal = Annotated[Principal, Depends(require_client)]
+
+from booking.services.client_admin_service import ClientAdminService  # noqa: E402
+from booking.services.event_admin_service import EventAdminService  # noqa: E402
+from booking.services.settings_service import SettingsService  # noqa: E402
+from booking.services.user_admin_service import SystemUserAdminService  # noqa: E402
+
+
+def _event_admin_service(session: SessionDep) -> EventAdminService:
+    return EventAdminService(session)
+
+
+def _client_admin_service(session: SessionDep) -> ClientAdminService:
+    return ClientAdminService(session)
+
+
+def _system_user_admin_service(session: SessionDep) -> SystemUserAdminService:
+    return SystemUserAdminService(session)
+
+
+def _settings_service(session: SessionDep) -> SettingsService:
+    return SettingsService(session)
+
+
+EventAdminServiceDep = Annotated[EventAdminService, Depends(_event_admin_service)]
+ClientAdminServiceDep = Annotated[ClientAdminService, Depends(_client_admin_service)]
+SystemUserAdminServiceDep = Annotated[SystemUserAdminService, Depends(_system_user_admin_service)]
+SettingsServiceDep = Annotated[SettingsService, Depends(_settings_service)]

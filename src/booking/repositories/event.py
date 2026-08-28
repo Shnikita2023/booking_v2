@@ -37,6 +37,27 @@ class EventRepository(BaseRepository[Event]):
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_any(self, event_id: uuid.UUID) -> Event | None:
+        stmt = self._base_select().where(Event.id == event_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_all(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> tuple[Sequence[Event], int]:
+        condition = Event.deleted_at.is_(None)
+        stmt = (
+            self._base_select()
+            .where(condition)
+            .order_by(Event.starts_at)
+            .limit(limit)
+            .offset(offset)
+        )
+        count_stmt = select(func.count()).select_from(Event).where(condition)
+        events = (await self._session.execute(stmt)).scalars().all()
+        total = (await self._session.execute(count_stmt)).scalar_one()
+        return events, total
+
     async def active_min_price(self, event_id: uuid.UUID) -> Decimal | None:
         """Source of truth for the display price: cheapest active ticket type."""
         stmt = select(func.min(TicketType.price)).where(
@@ -76,3 +97,12 @@ class TicketTypeRepository(BaseRepository[TicketType]):
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_by_event(self, event_id: uuid.UUID) -> Sequence[TicketType]:
+        stmt = (
+            self._base_select()
+            .where(TicketType.event_id == event_id)
+            .order_by(TicketType.name)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalars().all()

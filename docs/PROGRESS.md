@@ -4,8 +4,8 @@
 > Обновляется после каждого закрытого шага.
 > Процесс: SDD — спек → утверждение → реализация → верификация.
 
-**Дата обновления:** 2026-08-27
-**Статус:** Шаг 5 завершён ✅ · следующий — админ-API (шаг 6)
+**Дата обновления:** 2026-08-28
+**Статус:** Шаг 6 завершён ✅ · следующий — audit-log (шаг 7)
 **Репозиторий:** github.com/Shnikita2023/booking_v2 (SSH, ветка master)
 
 ---
@@ -83,12 +83,43 @@
 | 3 | Auth + RBAC + сессии + lockout | `03-auth.md` | ✅ принят и реализован | все критерии пройдены |
 | 4 | Публичное API (афиша, мероприятие, справка) | `04-public-api.md` | ✅ принят и реализован | все критерии пройдены |
 | 5 | Заказы и билеты (TTL-резерв, отмена) | `05-orders.md` | ✅ принят и реализован | все критерии пройдены |
-| 6 | Админ-API (мероприятия, клиенты, настройки) | `06-admin.md` | ⬜ | — |
+| 6 | Админ-API (мероприятия, клиенты, настройки) | `06-admin.md` | ✅ принят и реализован | все критерии пройдены |
 | 7 | Audit-лог + информирование о системе | `07-audit.md` | ⬜ | — |
 | 8 | Платежи (mock uniPayment) + рассылка писем | `08-payments.md` | ⬜ | — |
 | 9 | Отчёты (статистика/бухгалтерия) | `09-reports.md` | ⬜ | — |
 
 ## Журнал верификаций
+
+### Шаг 6 — админ-API (мероприятия, клиенты, персонал, настройки) (2026-08-28)
+- Спек `06-admin.md` написан и реализован строго по чек-листу (S-2/S-3/S-8):
+  - S-2 мероприятия: CRUD + жизненный цикл (publish/on_sale, cancel, complete,
+    pause-sales, resume-sales, move→MOVED) + clone (копия полей и тарифов, sold=0,
+    status=DRAFT, cloned_from_id) + управление тарифами (create/update/delete с
+    guard `quota >= sold`, 409 при нарушении и при delete с продажами).
+    `Event.price` пересчитывается из тарифов через `EventRepository.active_min_price`
+    (источник истины — `TicketType.price`).
+  - S-3 клиенты (ADMIN+MANAGER): create/list/get/update/reset-password/block
+    (is_active=False)/unblock/soft-delete. Добавлено поле `clients.is_active`
+    (миграция 0007).
+  - S-8 персонал (только ADMIN): create переиспользует логику `cli.create_staff`
+    (seeds роль при отсутствии), list/get/update(full_name, role_code, is_active)/
+    reset-password/block/soft-delete. Настройки (только ADMIN): list/get/set,
+    `system_settings.value` — JSONB, пока только хранение (миграция 0006).
+- RBAC через `require_role(RoleCode.*)` в `core/deps.py`; эндпоинты несут
+  `summary`/`description`/`response_model`, статусы — константы `fastapi.status`
+  (enforced в правилах кода). DTO-мапперы вынесены в фабрики-методы схем
+  (`EventRead.from_event`, `UserRead.from_user` и т.п.).
+- Ловушка async-SQLAlchemy: после `commit` объект с server-side колонками
+  (`updated_at`) не догружался вне сессии (MissingGreenlet) — `TimestampMixin`
+  переведён на Python-side UTC-дефолты (`default=lambda: datetime.now(UTC)`,
+  `onupdate=...`), чтобы значения жили в объекте. У `SystemUser.role` после смены
+  `role_id` в той же сессии relationship кэшировался старым — в `update` добавлен
+  `await session.refresh(user, ["role"])` перед возвратом.
+- Тесты (testcontainers, Postgres 16): 9 новых — CRUD мероприятий, жизненный цикл,
+  clone, guard квоты тарифов (409), RBAC (403 для client/manager на /users, 401 без
+  токена), CRUD клиентов, CRUD персонала, JSON-round-trip настроек.
+  Всего 40 passed ✅
+- ruff + mypy strict = 0 ошибок ✅
 
 ### Шаг 5 — Заказы и билеты (2026-08-27)
 - Решение по цене мероприятия (утверждено ранее, B/C): `Event.price` —

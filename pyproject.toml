@@ -51,7 +51,7 @@ select = ["E", "F", "I", "N", "UP", "B", "PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]
 # FastAPI DI uses Depends() in argument defaults — canonical idiom
-"src/booking/routers/*" = ["B008"]
+"src/booking/routers/**" = ["B008"]
 "src/booking/core/deps.py" = ["B008"]
 
 [tool.mypy]

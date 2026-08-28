@@ -2,6 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 
 from booking.models.clients import UserType
 from booking.models.users import RoleCode
@@ -25,3 +26,11 @@ class Principal:
 class OrderItem:
     ticket_type_id: uuid.UUID
     quantity: int
+
+
+@dataclass(slots=True)
+class TicketTypeSeed:
+    name: str
+    price: Decimal
+    quota: int
+

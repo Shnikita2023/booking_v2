@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, Uuid
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from booking.models.base import (
@@ -21,6 +21,7 @@ class Client(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, VersionedMixin, Base)
     password_hash: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(32), default=None)
     full_name: Mapped[str | None] = mapped_column(String(255), default=None)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     discount_percent: Mapped[int]
     special_conditions: Mapped[str | None] = mapped_column(String(1024), default=None)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
