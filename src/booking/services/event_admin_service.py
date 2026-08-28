@@ -25,8 +25,7 @@ class EventAdminService:
         self._audit = AuditService(session)
 
     async def _sync_price(self, event_id: uuid.UUID) -> None:
-        min_price = await self._events.active_min_price(event_id)
-        event = await self._events.get_any(event_id)
+        event, min_price = await self._events.get_with_min_price(event_id)
         if event is not None:
             await self._events.update(event, price=min_price)
 
@@ -61,14 +60,19 @@ class EventAdminService:
             sale_paused=sale_paused,
         )
         if ticket_types:
-            for seed in ticket_types:
-                await self._ticket_types.create(
-                    event_id=event.id,
-                    name=seed.name,
-                    price=seed.price,
-                    quota=seed.quota,
-                    sold=0,
-                )
+            self._session.add_all(
+                [
+                    TicketType(
+                        event_id=event.id,
+                        name=seed.name,
+                        price=seed.price,
+                        quota=seed.quota,
+                        sold=0,
+                    )
+                    for seed in ticket_types
+                ]
+            )
+            await self._session.flush()
         await self._sync_price(event.id)
         await self._audit.record(
             action=AuditAction.EVENT_CREATE,
@@ -144,14 +148,21 @@ class EventAdminService:
             sale_paused=source.sale_paused,
             cloned_from_id=source.id,
         )
-        for tt in await self._ticket_types.list_by_event(source.id):
-            await self._ticket_types.create(
-                event_id=cloned.id,
-                name=tt.name,
-                price=tt.price,
-                quota=tt.quota,
-                sold=0,
+        source_tts = await self._ticket_types.list_by_event(source.id)
+        if source_tts:
+            self._session.add_all(
+                [
+                    TicketType(
+                        event_id=cloned.id,
+                        name=tt.name,
+                        price=tt.price,
+                        quota=tt.quota,
+                        sold=0,
+                    )
+                    for tt in source_tts
+                ]
             )
+            await self._session.flush()
         await self._sync_price(cloned.id)
         await self._audit.record(
             action=AuditAction.EVENT_CLONE,

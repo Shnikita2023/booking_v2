@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import httpx
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.models.clients import InfoPage
@@ -156,3 +157,71 @@ async def test_event_price_is_derived_from_ticket_types_bc(
     refreshed = await EventRepository(web_session).get(event.id)
     assert refreshed is not None
     assert refreshed.price == Decimal("999.00")
+
+
+async def test_free_tickets_bulk(db_session: AsyncSession) -> None:
+    repo = EventRepository(db_session)
+    ev1 = Event(
+        title="E1",
+        starts_at=datetime.now(UTC) + timedelta(days=1),
+        status=EventStatus.ON_SALE,
+        price=None,
+        show_free_tickets=True,
+        venue="V",
+    )
+    ev2 = Event(
+        title="E2",
+        starts_at=datetime.now(UTC) + timedelta(days=1),
+        status=EventStatus.ON_SALE,
+        price=None,
+        show_free_tickets=True,
+        venue="V",
+    )
+    db_session.add_all([ev1, ev2])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            TicketType(event_id=ev1.id, name="a", price=Decimal("10"), quota=5, sold=2),
+            TicketType(event_id=ev1.id, name="b", price=Decimal("10"), quota=3, sold=1),
+            TicketType(event_id=ev2.id, name="c", price=Decimal("10"), quota=10, sold=10),
+        ]
+    )
+    await db_session.commit()
+
+    assert await repo.free_tickets_bulk([ev1.id, ev2.id]) == {ev1.id: 5, ev2.id: 0}
+    assert await repo.free_tickets_bulk([]) == {}
+
+
+async def test_catalog_list_free_tickets_and_no_nplus1(
+    client: httpx.AsyncClient,
+    web_session: AsyncSession,
+    pg_engine: object,
+    event_factory: EventFactory,
+) -> None:
+    for i in range(12):
+        event = await event_factory(title=f"E{i}", show_free=(i % 2 == 0))
+        if i % 2 == 0:
+            web_session.add(
+                TicketType(event_id=event.id, name="t", price=Decimal("10"), quota=10, sold=3)
+            )
+    await web_session.commit()
+
+    counter = {"n": 0}
+
+    def _inc(*args: object, **kwargs: object) -> None:
+        counter["n"] += 1
+
+    sa.event.listen(pg_engine.sync_engine, "after_cursor_execute", _inc)  # type: ignore[attr-defined]
+    try:
+        counter["n"] = 0
+        resp = await client.get("/api/v1/events")
+        assert resp.status_code == 200
+        # 2 queries for the list + 1 bulk free-ticket query; NOT 2 + 12 (N+1).
+        assert counter["n"] < 10
+    finally:
+        sa.event.remove(pg_engine.sync_engine, "after_cursor_execute", _inc)  # type: ignore[attr-defined]
+
+    body = resp.json()
+    by_title = {item["title"]: item for item in body["items"]}
+    assert by_title["E0"]["free_tickets"] == 7
+    assert by_title["E1"]["free_tickets"] is None

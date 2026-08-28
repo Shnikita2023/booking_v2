@@ -1,6 +1,7 @@
 """Public event catalogue reads and price synchronisation."""
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +39,17 @@ class EventService:
         if not event.show_free_tickets:
             return None
         return await self._events.free_tickets(event.id)
+
+    async def count_free_tickets_bulk(
+        self, events: Sequence[Event]
+    ) -> dict[uuid.UUID, int | None]:
+        """Free-ticket counts for many events in one query (no N+1 in the list)."""
+        enabled_ids = [event.id for event in events if event.show_free_tickets]
+        counts = await self._events.free_tickets_bulk(enabled_ids)
+        return {
+            event.id: (counts.get(event.id) if event.show_free_tickets else None)
+            for event in events
+        }
 
     async def get_page(self, slug: str) -> InfoPage:
         page = await self._pages.get_by_slug(slug)

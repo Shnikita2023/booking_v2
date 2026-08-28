@@ -66,6 +66,24 @@ class EventRepository(BaseRepository[Event]):
         )
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
+    async def get_with_min_price(
+        self, event_id: uuid.UUID
+    ) -> tuple[Event | None, Decimal | None]:
+        """Return the event together with its cheapest active ticket-type price."""
+        stmt = (
+            select(Event, func.min(TicketType.price))
+            .outerjoin(
+                TicketType,
+                (TicketType.event_id == Event.id) & (TicketType.deleted_at.is_(None)),
+            )
+            .where(Event.id == event_id, Event.deleted_at.is_(None))
+            .group_by(Event.id)
+        )
+        row = (await self._session.execute(stmt)).first()
+        if row is None:
+            return None, None
+        return row[0], row[1]
+
     async def free_tickets(self, event_id: uuid.UUID) -> int:
         stmt = select(
             func.coalesce(func.sum(TicketType.quota - TicketType.sold), 0)
@@ -74,6 +92,22 @@ class EventRepository(BaseRepository[Event]):
             TicketType.deleted_at.is_(None),
         )
         return int((await self._session.execute(stmt)).scalar_one())
+
+    async def free_tickets_bulk(
+        self, event_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """Free-ticket counts per event in a single grouped query (avoids N+1)."""
+        if not event_ids:
+            return {}
+        stmt = select(
+            TicketType.event_id,
+            func.coalesce(func.sum(TicketType.quota - TicketType.sold), 0),
+        ).where(
+            TicketType.event_id.in_(event_ids),
+            TicketType.deleted_at.is_(None),
+        ).group_by(TicketType.event_id)
+        rows = (await self._session.execute(stmt)).all()
+        return {row[0]: int(row[1]) for row in rows}
 
 
 class InfoPageRepository(BaseRepository[InfoPage]):

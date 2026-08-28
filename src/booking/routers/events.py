@@ -33,6 +33,7 @@ async def list_events(
     events, total = await service.list_on_sale(
         limit=query.limit, offset=query.offset
     )
+    free_map = await service.count_free_tickets_bulk(events)
     items = [
         EventShort(
             id=event.id,
@@ -41,7 +42,7 @@ async def list_events(
             venue=event.venue,
             age_rating=event.age_rating,
             banner_small_url=event.banner_small_url,
-            free_tickets=await service.count_free_tickets(event),
+            free_tickets=free_map[event.id],
         )
         for event in events
     ]

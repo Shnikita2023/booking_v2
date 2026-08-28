@@ -57,7 +57,6 @@ class AuditService:
             payload=_json_safe(payload),
         )
         self._session.add(record)
-        await self._session.flush()
         return record
 
     async def search(self, **filters: Any) -> tuple[list[AuditLog], int]:
