@@ -55,6 +55,7 @@ async def create_event(
         show_free_tickets=body.show_free_tickets,
         sale_paused=body.sale_paused,
         ticket_types=seeds,
+        actor=_principal,
     )
     return EventRead.from_event(event)
 
@@ -116,7 +117,7 @@ async def update_event(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    event = await service.update(event_id, **body.model_dump(exclude_unset=True))
+    event = await service.update(event_id, actor=_principal, **body.model_dump(exclude_unset=True))
     return EventRead.from_event(event)
 
 
@@ -132,7 +133,7 @@ async def clone_event(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.clone(event_id))
+    return EventRead.from_event(await service.clone(event_id, actor=_principal))
 
 
 @router.post(
@@ -146,7 +147,7 @@ async def publish_event(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.publish(event_id))
+    return EventRead.from_event(await service.publish(event_id, actor=_principal))
 
 
 @router.post(
@@ -160,7 +161,7 @@ async def cancel_event(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.cancel(event_id))
+    return EventRead.from_event(await service.cancel(event_id, actor=_principal))
 
 
 @router.post(
@@ -174,7 +175,7 @@ async def complete_event(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.complete(event_id))
+    return EventRead.from_event(await service.complete(event_id, actor=_principal))
 
 
 @router.post(
@@ -188,7 +189,7 @@ async def pause_sales(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.pause_sales(event_id))
+    return EventRead.from_event(await service.pause_sales(event_id, actor=_principal))
 
 
 @router.post(
@@ -202,7 +203,7 @@ async def resume_sales(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.resume_sales(event_id))
+    return EventRead.from_event(await service.resume_sales(event_id, actor=_principal))
 
 
 @router.post(
@@ -217,7 +218,7 @@ async def move_event(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> EventRead:
-    return EventRead.from_event(await service.move(event_id, body.starts_at))
+    return EventRead.from_event(await service.move(event_id, body.starts_at, actor=_principal))
 
 
 @router.post(
@@ -234,7 +235,7 @@ async def create_ticket_type(
     _principal: AdminManager,
 ) -> TicketTypeRead:
     ticket_type = await service.create_ticket_type(
-        event_id, name=body.name, price=body.price, quota=body.quota
+        event_id, name=body.name, price=body.price, quota=body.quota, actor=_principal
     )
     return TicketTypeRead.from_ticket_type(ticket_type)
 
@@ -253,7 +254,7 @@ async def update_ticket_type(
     _principal: AdminManager,
 ) -> TicketTypeRead:
     ticket_type = await service.update_ticket_type(
-        ticket_type_id, **body.model_dump(exclude_unset=True)
+        ticket_type_id, actor=_principal, **body.model_dump(exclude_unset=True)
     )
     return TicketTypeRead.from_ticket_type(ticket_type)
 
@@ -271,4 +272,4 @@ async def delete_ticket_type(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> None:
-    await service.delete_ticket_type(ticket_type_id)
+    await service.delete_ticket_type(ticket_type_id, actor=_principal)

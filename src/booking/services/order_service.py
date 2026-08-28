@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.config import Settings, get_settings
-from booking.core.dto import OrderItem
+from booking.core.dto import OrderItem, Principal
 from booking.core.errors import AppError
+from booking.models.audit import AuditAction
 from booking.models.orders import (
     Order,
     OrderStatus,
@@ -25,6 +26,7 @@ from booking.repositories.orders import (
     PaymentRepository,
     TicketRepository,
 )
+from booking.services.audit_service import AuditService
 
 
 class OrderService:
@@ -40,9 +42,15 @@ class OrderService:
         self._payments = PaymentRepository(session)
         self._events = EventRepository(session)
         self._ticket_types = TicketTypeRepository(session)
+        self._audit = AuditService(session)
 
     async def reserve(
-        self, *, client_id: uuid.UUID, event_id: uuid.UUID, items: list[OrderItem]
+        self,
+        *,
+        client_id: uuid.UUID,
+        event_id: uuid.UUID,
+        items: list[OrderItem],
+        actor: Principal | None = None,
     ) -> Order:
         """Create a RESERVED order, atomically reserving quota per ticket type."""
         if not items:
@@ -93,10 +101,19 @@ class OrderService:
                 )
         order.total_amount = total
         await self._payments.create(order_id=order.id, status=PaymentStatus.PENDING, amount=total)
+        await self._audit.record(
+            action=AuditAction.ORDER_RESERVE,
+            entity_type="order",
+            entity_id=order.id,
+            actor=actor,
+            payload={"event_id": str(event_id), "ticket_count": len(items)},
+        )
         await self._session.commit()
         return order
 
-    async def confirm_payment(self, *, order_id: uuid.UUID, client_id: uuid.UUID) -> Order:
+    async def confirm_payment(
+        self, *, order_id: uuid.UUID, client_id: uuid.UUID, actor: Principal | None = None
+    ) -> Order:
         """Transition a RESERVED order to PAID and mark its payment succeeded."""
         order = await self._orders.get_owned(order_id, client_id)
         if order is None:
@@ -112,10 +129,18 @@ class OrderService:
         order.status = OrderStatus.PAID
         order.reserved_until = None
         await self._set_payment_status(order.id, PaymentStatus.SUCCEEDED)
+        await self._audit.record(
+            action=AuditAction.ORDER_CONFIRM,
+            entity_type="order",
+            entity_id=order.id,
+            actor=actor,
+        )
         await self._session.commit()
         return order
 
-    async def cancel(self, *, order_id: uuid.UUID, client_id: uuid.UUID) -> Order:
+    async def cancel(
+        self, *, order_id: uuid.UUID, client_id: uuid.UUID, actor: Principal | None = None
+    ) -> Order:
         """Cancel an order under row lock, releasing quota; idempotent if already cancelled."""
         order = await self._orders.get_owned(order_id, client_id, lock=True)
         if order is None:
@@ -129,12 +154,24 @@ class OrderService:
                 status_code=status.HTTP_409_CONFLICT,
             )
         if order.status == OrderStatus.CANCELLED:
+            await self._audit.record(
+                action=AuditAction.ORDER_CANCEL,
+                entity_type="order",
+                entity_id=order.id,
+                actor=actor,
+            )
             return order
         await self._release_quota(order)
         order.status = OrderStatus.CANCELLED
         for ticket in order.tickets:
             ticket.status = TicketStatus.CANCELLED
         await self._set_payment_status(order.id, PaymentStatus.FAILED)
+        await self._audit.record(
+            action=AuditAction.ORDER_CANCEL,
+            entity_type="order",
+            entity_id=order.id,
+            actor=actor,
+        )
         await self._session.commit()
         return order
 
@@ -174,6 +211,13 @@ class OrderService:
             await self._set_payment_status(order.id, PaymentStatus.FAILED)
             count += 1
         if count:
+            await self._audit.record(
+                action=AuditAction.ORDER_CLEANUP,
+                entity_type="order",
+                entity_id=None,
+                actor=None,
+                payload={"count": count},
+            )
             await self._session.commit()
         return count
 

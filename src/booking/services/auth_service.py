@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.dto import Principal, TokenPair
 from booking.core.errors import AppError
+from booking.models.audit import AuditAction
 from booking.models.clients import Client, UserType
 from booking.models.users import RoleCode, SystemUser
 from booking.repositories.clients import ClientRepository
 from booking.repositories.tokens import RefreshTokenRepository
 from booking.repositories.users import RoleRepository, SystemUserRepository
 from booking.services import security
+from booking.services.audit_service import AuditService
 
 MAX_FAILED_ATTEMPTS = 3
 LOCK_MINUTES = 30
@@ -42,6 +44,7 @@ class AuthService:
         self._staff = SystemUserRepository(session)
         self._roles = RoleRepository(session)
         self._tokens = RefreshTokenRepository(session)
+        self._audit = AuditService(session)
 
     async def register_client(
         self,
@@ -62,6 +65,13 @@ class AuthService:
             phone=phone,
             discount_percent=0,
         )
+        await self._audit.record(
+            action=AuditAction.AUTH_REGISTER,
+            entity_type="client",
+            entity_id=client.id,
+            actor=Principal(user_type=UserType.CLIENT, user_id=client.id),
+            payload={"email": email},
+        )
         await self._session.commit()
         return client
 
@@ -70,10 +80,26 @@ class AuthService:
         self._ensure_not_locked(client.locked_until if client else None)
         valid = client is not None and security.verify_password(password, client.password_hash)
         if not valid or client is None:
+            await self._audit.record(
+                action=AuditAction.AUTH_LOGIN_FAIL,
+                entity_type="auth",
+                entity_id=None,
+                actor=None,
+                payload={"email": email},
+            )
             await self._register_failure(client)
+            if client is None:
+                await self._session.commit()
             raise _login_failure_result(client)
         client.failed_attempts = 0
         pair = await self._issue_pair(UserType.CLIENT, client.id)
+        await self._audit.record(
+            action=AuditAction.AUTH_LOGIN_OK,
+            entity_type="auth",
+            entity_id=client.id,
+            actor=Principal(user_type=UserType.CLIENT, user_id=client.id),
+            payload={"email": email},
+        )
         await self._session.commit()
         return pair
 
@@ -86,11 +112,27 @@ class AuthService:
             and security.verify_password(password, staff.password_hash)
         )
         if not valid or staff is None:
+            await self._audit.record(
+                action=AuditAction.AUTH_LOGIN_FAIL,
+                entity_type="auth",
+                entity_id=None,
+                actor=None,
+                payload={"email": email},
+            )
             await self._register_failure(staff)
+            if staff is None:
+                await self._session.commit()
             raise _login_failure_result(staff)
         staff.failed_attempts = 0
         await self._tokens.revoke_all_for_user(UserType.SYSTEM_USER, staff.id)
         pair = await self._issue_pair(UserType.SYSTEM_USER, staff.id)
+        await self._audit.record(
+            action=AuditAction.AUTH_LOGIN_OK,
+            entity_type="auth",
+            entity_id=staff.id,
+            actor=Principal(user_type=UserType.SYSTEM_USER, user_id=staff.id),
+            payload={"email": email},
+        )
         await self._session.commit()
         return pair
 
@@ -116,6 +158,13 @@ class AuthService:
 
     async def logout(self, principal: Principal) -> None:
         await self._tokens.revoke_all_for_user(principal.user_type, principal.user_id)
+        await self._audit.record(
+            action=AuditAction.AUTH_LOGOUT,
+            entity_type="auth",
+            entity_id=principal.user_id,
+            actor=principal,
+            payload={"user_type": principal.user_type.value},
+        )
         await self._session.commit()
 
     async def _issue_pair(self, user_type: UserType, user_id: uuid.UUID) -> TokenPair:

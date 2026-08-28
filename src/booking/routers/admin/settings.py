@@ -58,5 +58,6 @@ async def set_setting(
         value=body.value,
         description=body.description,
         updated_by=_principal.user_id,
+        actor=_principal,
     )
     return SettingRead.from_setting(setting)

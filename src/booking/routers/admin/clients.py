@@ -39,6 +39,7 @@ async def create_client(
         phone=body.phone,
         password=body.password,
         discount_percent=body.discount_percent,
+        actor=_principal,
     )
     return ClientRead.from_client(client)
 
@@ -85,7 +86,9 @@ async def update_client(
     service: ClientAdminServiceDep,
     _principal: AdminManager,
 ) -> ClientRead:
-    client = await service.update(client_id, **body.model_dump(exclude_unset=True))
+    client = await service.update(
+        client_id, actor=_principal, **body.model_dump(exclude_unset=True)
+    )
     return ClientRead.from_client(client)
 
 
@@ -102,7 +105,7 @@ async def reset_client_password(
     service: ClientAdminServiceDep,
     _principal: AdminManager,
 ) -> None:
-    await service.reset_password(client_id, body.password)
+    await service.reset_password(client_id, body.password, actor=_principal)
 
 
 @router.post(
@@ -116,7 +119,7 @@ async def block_client(
     service: ClientAdminServiceDep,
     _principal: AdminManager,
 ) -> ClientRead:
-    return ClientRead.from_client(await service.block(client_id))
+    return ClientRead.from_client(await service.block(client_id, actor=_principal))
 
 
 @router.post(
@@ -130,7 +133,7 @@ async def unblock_client(
     service: ClientAdminServiceDep,
     _principal: AdminManager,
 ) -> ClientRead:
-    return ClientRead.from_client(await service.unblock(client_id))
+    return ClientRead.from_client(await service.unblock(client_id, actor=_principal))
 
 
 @router.delete(
@@ -145,4 +148,4 @@ async def delete_client(
     service: ClientAdminServiceDep,
     _principal: AdminManager,
 ) -> None:
-    await service.delete(client_id)
+    await service.delete(client_id, actor=_principal)

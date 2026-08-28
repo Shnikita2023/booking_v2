@@ -33,7 +33,9 @@ async def create_user(
     service: SystemUserAdminServiceDep,
     _principal: AdminOnly,
 ) -> UserRead:
-    user = await service.create(email=body.email, password=body.password, role_code=body.role_code)
+    user = await service.create(
+        email=body.email, password=body.password, role_code=body.role_code, actor=_principal
+    )
     return UserRead.from_user(user)
 
 
@@ -80,7 +82,7 @@ async def update_user(
     _principal: AdminOnly,
 ) -> UserRead:
     changes = body.model_dump(exclude_unset=True)
-    user = await service.update(user_id, **changes)
+    user = await service.update(user_id, actor=_principal, **changes)
     return UserRead.from_user(user)
 
 
@@ -97,7 +99,7 @@ async def reset_user_password(
     service: SystemUserAdminServiceDep,
     _principal: AdminOnly,
 ) -> None:
-    await service.reset_password(user_id, body.password)
+    await service.reset_password(user_id, body.password, actor=_principal)
 
 
 @router.post(
@@ -111,7 +113,7 @@ async def block_user(
     service: SystemUserAdminServiceDep,
     _principal: AdminOnly,
 ) -> UserRead:
-    return UserRead.from_user(await service.block(user_id))
+    return UserRead.from_user(await service.block(user_id, actor=_principal))
 
 
 @router.post(
@@ -125,7 +127,7 @@ async def unblock_user(
     service: SystemUserAdminServiceDep,
     _principal: AdminOnly,
 ) -> UserRead:
-    return UserRead.from_user(await service.unblock(user_id))
+    return UserRead.from_user(await service.unblock(user_id, actor=_principal))
 
 
 @router.delete(
@@ -140,4 +142,4 @@ async def delete_user(
     service: SystemUserAdminServiceDep,
     _principal: AdminOnly,
 ) -> None:
-    await service.delete(user_id)
+    await service.delete(user_id, actor=_principal)

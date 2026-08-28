@@ -9,10 +9,12 @@ from typing import Any
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from booking.core.dto import TicketTypeSeed
+from booking.core.dto import Principal, TicketTypeSeed
 from booking.core.errors import AppError
+from booking.models.audit import AuditAction
 from booking.models.events import Event, EventStatus, TicketType
 from booking.repositories.event import EventRepository, TicketTypeRepository
+from booking.services.audit_service import AuditService
 
 
 class EventAdminService:
@@ -20,6 +22,7 @@ class EventAdminService:
         self._session = session
         self._events = EventRepository(session)
         self._ticket_types = TicketTypeRepository(session)
+        self._audit = AuditService(session)
 
     async def _sync_price(self, event_id: uuid.UUID) -> None:
         min_price = await self._events.active_min_price(event_id)
@@ -41,6 +44,7 @@ class EventAdminService:
         show_free_tickets: bool,
         sale_paused: bool,
         ticket_types: list[TicketTypeSeed] | None,
+        actor: Principal | None = None,
     ) -> Event:
         event = await self._events.create(
             title=title,
@@ -66,10 +70,19 @@ class EventAdminService:
                     sold=0,
                 )
         await self._sync_price(event.id)
+        await self._audit.record(
+            action=AuditAction.EVENT_CREATE,
+            entity_type="event",
+            entity_id=event.id,
+            actor=actor,
+            payload={"title": title},
+        )
         await self._session.commit()
         return await self.get(event.id)
 
-    async def update(self, event_id: uuid.UUID, **changes: Any) -> Event:
+    async def update(
+        self, event_id: uuid.UUID, *, actor: Principal | None = None, **changes: Any
+    ) -> Event:
         event = await self._events.get_any(event_id)
         if event is None:
             raise AppError(
@@ -79,6 +92,13 @@ class EventAdminService:
             )
         if changes:
             await self._events.update(event, **changes)
+        await self._audit.record(
+            action=AuditAction.EVENT_UPDATE,
+            entity_type="event",
+            entity_id=event_id,
+            actor=actor,
+            payload=changes,
+        )
         await self._session.commit()
         return await self.get(event_id)
 
@@ -101,7 +121,7 @@ class EventAdminService:
     ) -> tuple[Sequence[Event], int]:
         return await self._events.list_all(limit=limit, offset=offset)
 
-    async def clone(self, event_id: uuid.UUID) -> Event:
+    async def clone(self, event_id: uuid.UUID, *, actor: Principal | None = None) -> Event:
         source = await self._events.get_any(event_id)
         if source is None:
             raise AppError(
@@ -133,10 +153,24 @@ class EventAdminService:
                 sold=0,
             )
         await self._sync_price(cloned.id)
+        await self._audit.record(
+            action=AuditAction.EVENT_CLONE,
+            entity_type="event",
+            entity_id=cloned.id,
+            actor=actor,
+            payload={"source_id": str(event_id)},
+        )
         await self._session.commit()
         return await self.get(cloned.id)
 
-    async def _set_status(self, event_id: uuid.UUID, status_: EventStatus) -> Event:
+    async def _set_status(
+        self,
+        event_id: uuid.UUID,
+        status_: EventStatus,
+        *,
+        action: AuditAction,
+        actor: Principal | None = None,
+    ) -> Event:
         event = await self._events.get_any(event_id)
         if event is None:
             raise AppError(
@@ -145,19 +179,30 @@ class EventAdminService:
                 status_code=status.HTTP_404_NOT_FOUND,
             )
         await self._events.update(event, status=status_)
+        await self._audit.record(
+            action=action, entity_type="event", entity_id=event_id, actor=actor
+        )
         await self._session.commit()
         return await self.get(event_id)
 
-    async def publish(self, event_id: uuid.UUID) -> Event:
-        return await self._set_status(event_id, EventStatus.ON_SALE)
+    async def publish(self, event_id: uuid.UUID, *, actor: Principal | None = None) -> Event:
+        return await self._set_status(
+            event_id, EventStatus.ON_SALE, action=AuditAction.EVENT_PUBLISH, actor=actor
+        )
 
-    async def cancel(self, event_id: uuid.UUID) -> Event:
-        return await self._set_status(event_id, EventStatus.CANCELLED)
+    async def cancel(self, event_id: uuid.UUID, *, actor: Principal | None = None) -> Event:
+        return await self._set_status(
+            event_id, EventStatus.CANCELLED, action=AuditAction.EVENT_CANCEL, actor=actor
+        )
 
-    async def complete(self, event_id: uuid.UUID) -> Event:
-        return await self._set_status(event_id, EventStatus.COMPLETED)
+    async def complete(self, event_id: uuid.UUID, *, actor: Principal | None = None) -> Event:
+        return await self._set_status(
+            event_id, EventStatus.COMPLETED, action=AuditAction.EVENT_COMPLETE, actor=actor
+        )
 
-    async def pause_sales(self, event_id: uuid.UUID) -> Event:
+    async def pause_sales(
+        self, event_id: uuid.UUID, *, actor: Principal | None = None
+    ) -> Event:
         event = await self._events.get_any(event_id)
         if event is None:
             raise AppError(
@@ -166,10 +211,15 @@ class EventAdminService:
                 status_code=status.HTTP_404_NOT_FOUND,
             )
         await self._events.update(event, sale_paused=True)
+        await self._audit.record(
+            action=AuditAction.EVENT_PAUSE, entity_type="event", entity_id=event_id, actor=actor
+        )
         await self._session.commit()
         return await self.get(event_id)
 
-    async def resume_sales(self, event_id: uuid.UUID) -> Event:
+    async def resume_sales(
+        self, event_id: uuid.UUID, *, actor: Principal | None = None
+    ) -> Event:
         event = await self._events.get_any(event_id)
         if event is None:
             raise AppError(
@@ -178,10 +228,19 @@ class EventAdminService:
                 status_code=status.HTTP_404_NOT_FOUND,
             )
         await self._events.update(event, sale_paused=False)
+        await self._audit.record(
+            action=AuditAction.EVENT_RESUME, entity_type="event", entity_id=event_id, actor=actor
+        )
         await self._session.commit()
         return await self.get(event_id)
 
-    async def move(self, event_id: uuid.UUID, new_starts_at: datetime) -> Event:
+    async def move(
+        self,
+        event_id: uuid.UUID,
+        new_starts_at: datetime,
+        *,
+        actor: Principal | None = None,
+    ) -> Event:
         event = await self._events.get_any(event_id)
         if event is None:
             raise AppError(
@@ -190,11 +249,20 @@ class EventAdminService:
                 status_code=status.HTTP_404_NOT_FOUND,
             )
         await self._events.update(event, status=EventStatus.MOVED, starts_at=new_starts_at)
+        await self._audit.record(
+            action=AuditAction.EVENT_MOVE, entity_type="event", entity_id=event_id, actor=actor
+        )
         await self._session.commit()
         return await self.get(event_id)
 
     async def create_ticket_type(
-        self, event_id: uuid.UUID, *, name: str, price: Decimal, quota: int
+        self,
+        event_id: uuid.UUID,
+        *,
+        name: str,
+        price: Decimal,
+        quota: int,
+        actor: Principal | None = None,
     ) -> TicketType:
         event = await self._events.get_any(event_id)
         if event is None:
@@ -207,11 +275,18 @@ class EventAdminService:
             event_id=event_id, name=name, price=price, quota=quota, sold=0
         )
         await self._sync_price(event_id)
+        await self._audit.record(
+            action=AuditAction.TICKET_TYPE_CREATE,
+            entity_type="ticket_type",
+            entity_id=ticket_type.id,
+            actor=actor,
+            payload={"event_id": str(event_id), "name": name},
+        )
         await self._session.commit()
         return ticket_type
 
     async def update_ticket_type(
-        self, ticket_type_id: uuid.UUID, **changes: Any
+        self, ticket_type_id: uuid.UUID, *, actor: Principal | None = None, **changes: Any
     ) -> TicketType:
         ticket_type = await self._ticket_types.get(ticket_type_id)
         if ticket_type is None:
@@ -229,10 +304,19 @@ class EventAdminService:
             )
         await self._ticket_types.update(ticket_type, **changes)
         await self._sync_price(ticket_type.event_id)
+        await self._audit.record(
+            action=AuditAction.TICKET_TYPE_UPDATE,
+            entity_type="ticket_type",
+            entity_id=ticket_type_id,
+            actor=actor,
+            payload=changes,
+        )
         await self._session.commit()
         return ticket_type
 
-    async def delete_ticket_type(self, ticket_type_id: uuid.UUID) -> None:
+    async def delete_ticket_type(
+        self, ticket_type_id: uuid.UUID, *, actor: Principal | None = None
+    ) -> None:
         ticket_type = await self._ticket_types.get(ticket_type_id)
         if ticket_type is None:
             raise AppError(
@@ -248,4 +332,10 @@ class EventAdminService:
             )
         await self._ticket_types.soft_delete(ticket_type_id)
         await self._sync_price(ticket_type.event_id)
+        await self._audit.record(
+            action=AuditAction.TICKET_TYPE_DELETE,
+            entity_type="ticket_type",
+            entity_id=ticket_type_id,
+            actor=actor,
+        )
         await self._session.commit()

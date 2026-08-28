@@ -36,6 +36,7 @@ async def create_order(
             OrderItem(ticket_type_id=item.ticket_type_id, quantity=item.quantity)
             for item in body.items
         ],
+        actor=principal,
     )
     return OrderRead.from_order(order)
 
@@ -54,7 +55,7 @@ async def pay_order(
     session: SessionDep,
 ) -> OrderRead:
     order = await OrderService(session).confirm_payment(
-        order_id=order_id, client_id=principal.user_id
+        order_id=order_id, client_id=principal.user_id, actor=principal
     )
     return OrderRead.from_order(order)
 
@@ -72,7 +73,9 @@ async def cancel_order(
     principal: ClientPrincipal,
     session: SessionDep,
 ) -> OrderRead:
-    order = await OrderService(session).cancel(order_id=order_id, client_id=principal.user_id)
+    order = await OrderService(session).cancel(
+        order_id=order_id, client_id=principal.user_id, actor=principal
+    )
     return OrderRead.from_order(order)
 
 

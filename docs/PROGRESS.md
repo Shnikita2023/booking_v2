@@ -5,7 +5,7 @@
 > Процесс: SDD — спек → утверждение → реализация → верификация.
 
 **Дата обновления:** 2026-08-28
-**Статус:** Шаг 6 завершён ✅ · следующий — audit-log (шаг 7)
+**Статус:** Шаг 7 завершён ✅ · следующий — платежи/рассылка (шаг 8)
 **Репозиторий:** github.com/Shnikita2023/booking_v2 (SSH, ветка master)
 
 ---
@@ -71,7 +71,9 @@
 - **Инкрементальная схема БД**: полная модель данных живёт в спеке как проектная
   документация, но каждая таблица создаётся миграцией того шага, где впервые нужна.
   Порядок: roles/system_users/clients (02) → events/ticket_types/info_pages (04) →
-  orders/tickets/payments (05) → discounts (06) → audit_log+партиции (07).
+   orders/tickets/payments (05) → discounts (06) → audit_log (07, физические
+   партиции по годам — отдельным шагом позже, таблица сделана append-only, чтобы
+   партиции можно было накатить пересозданием).
 
 ## Статус шагов
 
@@ -84,11 +86,45 @@
 | 4 | Публичное API (афиша, мероприятие, справка) | `04-public-api.md` | ✅ принят и реализован | все критерии пройдены |
 | 5 | Заказы и билеты (TTL-резерв, отмена) | `05-orders.md` | ✅ принят и реализован | все критерии пройдены |
 | 6 | Админ-API (мероприятия, клиенты, настройки) | `06-admin.md` | ✅ принят и реализован | все критерии пройдены |
-| 7 | Audit-лог + информирование о системе | `07-audit.md` | ⬜ | — |
+| 7 | Audit-лог + информирование о системе | `07-audit.md` | ✅ принят и реализован | все критерии пройдены |
 | 8 | Платежи (mock uniPayment) + рассылка писем | `08-payments.md` | ⬜ | — |
 | 9 | Отчёты (статистика/бухгалтерия) | `09-reports.md` | ⬜ | — |
 
 ## Журнал верификаций
+
+### Шаг 7 — audit-лог + информирование о системе (2026-08-28)
+- Спек `07-audit.md` реализован строго по чек-листу (D-2/D-3/S-7/NF-5):
+  - Модель `AuditLog` (`models/audit.py`) — append-only (без update/delete в
+    репозитории), поля: `actor_type` (UserType|None), `actor_id`,
+    `actor_role` (RoleCode, только для SYSTEM_USER), `action` (Enum
+    `AuditAction`), `entity_type`, `entity_id`, `payload` (JSONB), `created_at`
+    (UTC, Python-side дефолт). Индексы: actor_type, actor_id, action,
+    created_at, entity_type, composite(entity_type, entity_id).
+    Миграция `0008_audit_log` (upgrade/downgrade ок).
+  - `AuditRepository.search` — фильтры по actor/action/entity/датам + пагинация,
+    сортировка `created_at DESC`.
+  - `AuditService.record`/`search` — запись актора берётся из `Principal`
+    (None для анонимных событий, напр. неудачный логин); payload
+    автоматически приводится к JSON-safe (UUID/datetime/Enum → примитивы),
+    чтобы asyncpg не падал на сериализации.
+  - Хуки аудита добавлены во все мутирующие сервисы с параметром
+    `actor: Principal | None = None`: `EventAdminService` (create/update/
+    publish/cancel/complete/pause/resume/move/clone/CRUD тарифов),
+    `ClientAdminService`, `SystemUserAdminService`, `SettingsService.set`,
+    `OrderService` (reserve/confirm/cancel/cleanup), `AuthService`
+    (register/login успех+неудача/logout). Роутеры прокидывают `_principal`.
+  - `GET /api/v1/admin/audit` (только ADMIN) — фильтры (action, actor_type,
+    actor_id, actor_role, entity_type, entity_id, from_at, to_at) + пагинация,
+    `response_model=AuditListResponse`. «Информирование о системе» ограничено
+    журналом событий (по решению заказчика); ошибки/состояние — через
+    существующий `/health` и структурированные логи.
+  - Физическое годовое партиционирование отложено отдельным шагом (таблица
+    append-only, партиции накатываются пересозданием).
+- Тесты (testcontainers, Postgres 16): 5 новых — поиск/фильтрация/сортировка
+  репозитория, аудит создания мероприятия (актор=admin), аудит брони клиентом
+  (актор=client), аудит неудачного логина (актор=None), RBAC журнала
+  (client→403, без токена→401). Всего 45 passed ✅
+- ruff + mypy strict = 0 ошибок ✅
 
 ### Шаг 6 — админ-API (мероприятия, клиенты, персонал, настройки) (2026-08-28)
 - Спек `06-admin.md` написан и реализован строго по чек-листу (S-2/S-3/S-8):

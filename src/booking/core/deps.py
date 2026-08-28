@@ -97,6 +97,7 @@ async def require_client(principal: Principal = Depends(get_current_principal)) 
 
 ClientPrincipal = Annotated[Principal, Depends(require_client)]
 
+from booking.services.audit_service import AuditService  # noqa: E402
 from booking.services.client_admin_service import ClientAdminService  # noqa: E402
 from booking.services.event_admin_service import EventAdminService  # noqa: E402
 from booking.services.settings_service import SettingsService  # noqa: E402
@@ -119,7 +120,12 @@ def _settings_service(session: SessionDep) -> SettingsService:
     return SettingsService(session)
 
 
+def _audit_service(session: SessionDep) -> AuditService:
+    return AuditService(session)
+
+
 EventAdminServiceDep = Annotated[EventAdminService, Depends(_event_admin_service)]
 ClientAdminServiceDep = Annotated[ClientAdminService, Depends(_client_admin_service)]
 SystemUserAdminServiceDep = Annotated[SystemUserAdminService, Depends(_system_user_admin_service)]
 SettingsServiceDep = Annotated[SettingsService, Depends(_settings_service)]
+AuditServiceDep = Annotated[AuditService, Depends(_audit_service)]

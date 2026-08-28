@@ -4,6 +4,7 @@ from booking.core.config import get_settings
 from booking.core.errors import install_error_handlers
 from booking.core.logging import RequestIdMiddleware, setup_logging
 from booking.routers import auth, events, pages, staff, system
+from booking.routers.admin import audit as admin_audit
 from booking.routers.admin import clients, users
 from booking.routers.admin import events as admin_events
 from booking.routers.admin import settings as admin_settings
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(clients.router)
     app.include_router(users.router)
     app.include_router(admin_settings.router)
+    app.include_router(admin_audit.router)
     return app
 
 

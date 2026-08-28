@@ -7,16 +7,20 @@ from typing import Any
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from booking.core.dto import Principal
 from booking.core.errors import AppError
+from booking.models.audit import AuditAction
 from booking.models.clients import Client
 from booking.repositories.clients import ClientRepository
 from booking.services import security
+from booking.services.audit_service import AuditService
 
 
 class ClientAdminService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._clients = ClientRepository(session)
+        self._audit = AuditService(session)
 
     async def create(
         self,
@@ -26,6 +30,7 @@ class ClientAdminService:
         phone: str | None,
         password: str,
         discount_percent: int = 0,
+        actor: Principal | None = None,
     ) -> Client:
         existing = await self._clients.get_by_email(email)
         if existing is not None:
@@ -39,6 +44,13 @@ class ClientAdminService:
             password_hash=security.hash_password(password),
             is_active=True,
             discount_percent=discount_percent,
+        )
+        await self._audit.record(
+            action=AuditAction.CLIENT_CREATE,
+            entity_type="client",
+            entity_id=client.id,
+            actor=actor,
+            payload={"email": email},
         )
         await self._session.commit()
         return client
@@ -58,31 +70,68 @@ class ClientAdminService:
     ) -> tuple[Sequence[Client], int]:
         return await self._clients.list_all(limit=limit, offset=offset)
 
-    async def update(self, client_id: uuid.UUID, **changes: Any) -> Client:
+    async def update(
+        self, client_id: uuid.UUID, *, actor: Principal | None = None, **changes: Any
+    ) -> Client:
         client = await self.get(client_id)
         await self._clients.update(client, **changes)
+        await self._audit.record(
+            action=AuditAction.CLIENT_UPDATE,
+            entity_type="client",
+            entity_id=client_id,
+            actor=actor,
+            payload=changes,
+        )
         await self._session.commit()
         return client
 
-    async def reset_password(self, client_id: uuid.UUID, new_password: str) -> Client:
+    async def reset_password(
+        self, client_id: uuid.UUID, new_password: str, *, actor: Principal | None = None
+    ) -> Client:
         client = await self.get(client_id)
         await self._clients.update(client, password_hash=security.hash_password(new_password))
+        await self._audit.record(
+            action=AuditAction.CLIENT_RESET_PASSWORD,
+            entity_type="client",
+            entity_id=client_id,
+            actor=actor,
+        )
         await self._session.commit()
         return client
 
-    async def block(self, client_id: uuid.UUID) -> Client:
+    async def block(self, client_id: uuid.UUID, *, actor: Principal | None = None) -> Client:
         client = await self.get(client_id)
         await self._clients.update(client, is_active=False)
+        await self._audit.record(
+            action=AuditAction.CLIENT_BLOCK,
+            entity_type="client",
+            entity_id=client_id,
+            actor=actor,
+            payload={"is_active": False},
+        )
         await self._session.commit()
         return client
 
-    async def unblock(self, client_id: uuid.UUID) -> Client:
+    async def unblock(self, client_id: uuid.UUID, *, actor: Principal | None = None) -> Client:
         client = await self.get(client_id)
         await self._clients.update(client, is_active=True)
+        await self._audit.record(
+            action=AuditAction.CLIENT_UNBLOCK,
+            entity_type="client",
+            entity_id=client_id,
+            actor=actor,
+            payload={"is_active": True},
+        )
         await self._session.commit()
         return client
 
-    async def delete(self, client_id: uuid.UUID) -> None:
+    async def delete(self, client_id: uuid.UUID, *, actor: Principal | None = None) -> None:
         await self.get(client_id)
         await self._clients.soft_delete(client_id)
+        await self._audit.record(
+            action=AuditAction.CLIENT_DELETE,
+            entity_type="client",
+            entity_id=client_id,
+            actor=actor,
+        )
         await self._session.commit()
