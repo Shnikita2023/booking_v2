@@ -57,6 +57,13 @@ class OrderService:
             raise AppError(
                 "Empty order", code="empty_order", status_code=status.HTTP_400_BAD_REQUEST
             )
+        for item in items:
+            if item.quantity < 1:
+                raise AppError(
+                    "Quantity must be at least 1",
+                    code="invalid_quantity",
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
         event = await self._events.get_on_sale(event_id)
         if event is None:
             raise AppError(
@@ -115,7 +122,7 @@ class OrderService:
         self, *, order_id: uuid.UUID, client_id: uuid.UUID, actor: Principal | None = None
     ) -> Order:
         """Transition a RESERVED order to PAID and mark its payment succeeded."""
-        order = await self._orders.get_owned(order_id, client_id)
+        order = await self._orders.get_owned(order_id, client_id, lock=True)
         if order is None:
             raise AppError(
                 "Order not found", code="order_not_found", status_code=status.HTTP_404_NOT_FOUND
@@ -160,6 +167,7 @@ class OrderService:
                 entity_id=order.id,
                 actor=actor,
             )
+            await self._session.commit()
             return order
         await self._release_quota(order)
         order.status = OrderStatus.CANCELLED
@@ -227,7 +235,7 @@ class OrderService:
         for ticket in order.tickets:
             by_type[ticket.ticket_type_id] = by_type.get(ticket.ticket_type_id, 0) + 1
         for ticket_type_id, qty in by_type.items():
-            ticket_type = await self._ticket_types.lock(ticket_type_id)
+            ticket_type = await self._ticket_types.lock_skip_locked(ticket_type_id)
             if ticket_type is not None:
                 ticket_type.sold = max(0, ticket_type.sold - qty)
 

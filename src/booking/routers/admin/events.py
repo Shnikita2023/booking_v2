@@ -254,7 +254,7 @@ async def update_ticket_type(
     _principal: AdminManager,
 ) -> TicketTypeRead:
     ticket_type = await service.update_ticket_type(
-        ticket_type_id, actor=_principal, **body.model_dump(exclude_unset=True)
+        ticket_type_id, event_id=event_id, actor=_principal, **body.model_dump(exclude_unset=True)
     )
     return TicketTypeRead.from_ticket_type(ticket_type)
 
@@ -272,4 +272,4 @@ async def delete_ticket_type(
     service: EventAdminServiceDep,
     _principal: AdminManager,
 ) -> None:
-    await service.delete_ticket_type(ticket_type_id, actor=_principal)
+    await service.delete_ticket_type(ticket_type_id, event_id=event_id, actor=_principal)

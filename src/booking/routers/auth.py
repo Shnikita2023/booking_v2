@@ -17,6 +17,7 @@ from booking.schemas.auth import (
     MeResponse,
     RefreshRequest,
     RegisterRequest,
+    RegisterResponse,
     TokenResponse,
 )
 from booking.services.auth_service import AuthService
@@ -29,9 +30,9 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new client",
     description="Create a client account with email and password.",
-    response_model=dict[str, str],
+    response_model=RegisterResponse,
 )
-async def register(body: RegisterRequest, session: SessionDep) -> dict[str, str]:
+async def register(body: RegisterRequest, session: SessionDep) -> RegisterResponse:
     service = AuthService(session)
     client = await service.register_client(
         email=body.email,
@@ -39,7 +40,7 @@ async def register(body: RegisterRequest, session: SessionDep) -> dict[str, str]
         full_name=body.full_name,
         phone=body.phone,
     )
-    return {"id": str(client.id), "email": client.email}
+    return RegisterResponse(id=str(client.id), email=client.email)
 
 
 async def _me_payload(principal: Principal, session: AsyncSession) -> MeResponse:

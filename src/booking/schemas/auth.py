@@ -32,3 +32,8 @@ class MeResponse(BaseModel):
     role: str | None = None
     full_name: str | None = None
     discount_percent: int | None = None
+
+
+class RegisterResponse(BaseModel):
+    id: str
+    email: str

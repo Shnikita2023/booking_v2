@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from booking.models.settings import SystemSetting
 
@@ -32,6 +32,5 @@ class SettingRead(BaseModel):
 
 
 class SettingSet(BaseModel):
-    key: str = Field(min_length=1, max_length=128)
     value: Any = None
     description: str | None = None

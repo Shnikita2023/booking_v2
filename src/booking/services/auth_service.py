@@ -208,7 +208,6 @@ class AuthService:
         user.failed_attempts += 1
         if user.failed_attempts >= MAX_FAILED_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=LOCK_MINUTES)
-        await self._session.commit()
 
 
 def _login_failure_result(user: Client | SystemUser | None) -> AppError:

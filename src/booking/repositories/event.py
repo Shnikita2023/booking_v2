@@ -132,6 +132,16 @@ class TicketTypeRepository(BaseRepository[TicketType]):
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def lock_skip_locked(self, ticket_type_id: uuid.UUID) -> TicketType | None:
+        """Row-level lock (FOR UPDATE SKIP LOCKED) for cleanup to avoid deadlocks."""
+        stmt = (
+            select(TicketType)
+            .where(TicketType.id == ticket_type_id)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_by_event(self, event_id: uuid.UUID) -> Sequence[TicketType]:
         stmt = (
             self._base_select()
@@ -140,3 +150,14 @@ class TicketTypeRepository(BaseRepository[TicketType]):
         )
         result = await self._session.execute(stmt)
         return result.scalars().all()
+
+    async def get_by_event(
+        self, ticket_type_id: uuid.UUID, event_id: uuid.UUID
+    ) -> TicketType | None:
+        """Return a ticket type only if it belongs to the given event."""
+        stmt = self._base_select().where(
+            TicketType.id == ticket_type_id,
+            TicketType.event_id == event_id,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()

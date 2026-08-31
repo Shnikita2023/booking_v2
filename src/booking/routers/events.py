@@ -56,7 +56,8 @@ async def list_events(
     response_model=EventDetail,
 )
 async def get_event(event_id: uuid.UUID, session: SessionDep) -> EventDetail:
-    event = await EventService(session).get_public(event_id)
+    service = EventService(session)
+    event = await service.get_public(event_id)
     return EventDetail(
         id=event.id,
         title=event.title,
@@ -71,5 +72,5 @@ async def get_event(event_id: uuid.UUID, session: SessionDep) -> EventDetail:
         banner_large_url=event.banner_large_url,
         show_free_tickets=event.show_free_tickets,
         sale_paused=event.sale_paused,
-        free_tickets=await EventService(session).count_free_tickets(event),
+        free_tickets=await service.count_free_tickets(event),
     )

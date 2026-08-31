@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -18,6 +18,20 @@ from booking.services.audit_service import AuditService
 
 
 class EventAdminService:
+    _VALID_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
+        EventStatus.DRAFT: {EventStatus.ON_SALE, EventStatus.CANCELLED},
+        EventStatus.ON_SALE: {
+            EventStatus.PAUSED,
+            EventStatus.CANCELLED,
+            EventStatus.COMPLETED,
+            EventStatus.MOVED,
+        },
+        EventStatus.PAUSED: {EventStatus.ON_SALE, EventStatus.CANCELLED},
+        EventStatus.CANCELLED: set(),
+        EventStatus.COMPLETED: set(),
+        EventStatus.MOVED: set(),
+    }
+
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._events = EventRepository(session)
@@ -45,6 +59,12 @@ class EventAdminService:
         ticket_types: list[TicketTypeSeed] | None,
         actor: Principal | None = None,
     ) -> Event:
+        if starts_at <= datetime.now(UTC):
+            raise AppError(
+                "Event start time must be in the future",
+                code="invalid_starts_at",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         event = await self._events.create(
             title=title,
             description=description,
@@ -84,6 +104,8 @@ class EventAdminService:
         await self._session.commit()
         return await self.get(event.id)
 
+    _UPDATE_DISALLOWED = frozenset({"status", "id", "created_at", "deleted_at"})
+
     async def update(
         self, event_id: uuid.UUID, *, actor: Principal | None = None, **changes: Any
     ) -> Event:
@@ -94,14 +116,15 @@ class EventAdminService:
                 code="event_not_found",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
-        if changes:
-            await self._events.update(event, **changes)
+        safe = {k: v for k, v in changes.items() if k not in self._UPDATE_DISALLOWED}
+        if safe:
+            await self._events.update(event, **safe)
         await self._audit.record(
             action=AuditAction.EVENT_UPDATE,
             entity_type="event",
             entity_id=event_id,
             actor=actor,
-            payload=changes,
+            payload=safe,
         )
         await self._session.commit()
         return await self.get(event_id)
@@ -188,6 +211,13 @@ class EventAdminService:
                 "Event not found",
                 code="event_not_found",
                 status_code=status.HTTP_404_NOT_FOUND,
+            )
+        allowed = self._VALID_TRANSITIONS.get(event.status, set())
+        if status_ not in allowed:
+            raise AppError(
+                f"Cannot transition from {event.status.value} to {status_.value}",
+                code="invalid_status_transition",
+                status_code=status.HTTP_409_CONFLICT,
             )
         await self._events.update(event, status=status_)
         await self._audit.record(
@@ -297,9 +327,17 @@ class EventAdminService:
         return ticket_type
 
     async def update_ticket_type(
-        self, ticket_type_id: uuid.UUID, *, actor: Principal | None = None, **changes: Any
+        self,
+        ticket_type_id: uuid.UUID,
+        *,
+        event_id: uuid.UUID | None = None,
+        actor: Principal | None = None,
+        **changes: Any,
     ) -> TicketType:
-        ticket_type = await self._ticket_types.get(ticket_type_id)
+        if event_id is not None:
+            ticket_type = await self._ticket_types.get_by_event(ticket_type_id, event_id)
+        else:
+            ticket_type = await self._ticket_types.get(ticket_type_id)
         if ticket_type is None:
             raise AppError(
                 "Ticket type not found",
@@ -326,9 +364,16 @@ class EventAdminService:
         return ticket_type
 
     async def delete_ticket_type(
-        self, ticket_type_id: uuid.UUID, *, actor: Principal | None = None
+        self,
+        ticket_type_id: uuid.UUID,
+        *,
+        event_id: uuid.UUID | None = None,
+        actor: Principal | None = None,
     ) -> None:
-        ticket_type = await self._ticket_types.get(ticket_type_id)
+        if event_id is not None:
+            ticket_type = await self._ticket_types.get_by_event(ticket_type_id, event_id)
+        else:
+            ticket_type = await self._ticket_types.get(ticket_type_id)
         if ticket_type is None:
             raise AppError(
                 "Ticket type not found",
