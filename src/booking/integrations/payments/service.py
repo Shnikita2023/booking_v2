@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from booking.core.dto import Principal
 from booking.core.errors import AppError
-from booking.messaging.service import EmailService
+from booking.integrations.messaging.service import EmailService
+from booking.integrations.payments.gateway import GatewayEvent, PaymentGateway
 from booking.models.audit import AuditAction
 from booking.models.orders import (
     Order,
@@ -18,7 +19,6 @@ from booking.models.orders import (
     PaymentStatus,
     TicketStatus,
 )
-from booking.payments.gateway import GatewayEvent, PaymentGateway
 from booking.repositories.event import TicketTypeRepository
 from booking.repositories.orders import OrderRepository, TicketRepository
 from booking.repositories.payments import PaymentRepository

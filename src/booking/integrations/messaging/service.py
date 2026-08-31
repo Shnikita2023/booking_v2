@@ -1,6 +1,6 @@
 """Email sending service (D-8)."""
 
-from booking.messaging.mailer import Mailer
+from booking.integrations.messaging.mailer import Mailer
 
 
 class EmailService:

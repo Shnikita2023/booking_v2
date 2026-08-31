@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Query, status
 
 from booking.core.deps import SessionDep, require_role
 from booking.core.dto import OrderItem, Principal
-from booking.messaging.service import EmailService
-from booking.messaging.stub import StubMailer
+from booking.integrations.messaging.service import EmailService
+from booking.integrations.messaging.stub import StubMailer
+from booking.integrations.payments.mock import MockUniPaymentGateway
+from booking.integrations.payments.service import PaymentService
 from booking.models.users import RoleCode
-from booking.payments.mock import MockUniPaymentGateway
-from booking.payments.service import PaymentService
 from booking.repositories.orders import OrderRepository
 from booking.schemas.order import OrderCreateRequest, OrderListResponse, OrderRead
 from booking.schemas.payment import PaymentRead

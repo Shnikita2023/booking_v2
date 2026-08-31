@@ -3,7 +3,7 @@
 import uuid
 from decimal import Decimal
 
-from booking.payments.gateway import (
+from booking.integrations.payments.gateway import (
     GatewayEvent,
     PaymentIntent,
     PaymentResult,

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from booking.messaging.mailer import EmailMessage
+from booking.integrations.messaging.mailer import EmailMessage
 from booking.models.email_outbox import EmailOutbox
 
 

@@ -5,10 +5,10 @@ import uuid
 from fastapi import APIRouter, status
 
 from booking.core.deps import ClientPrincipal, SessionDep
-from booking.messaging.service import EmailService
-from booking.messaging.stub import StubMailer
-from booking.payments.mock import MockUniPaymentGateway
-from booking.payments.service import PaymentService
+from booking.integrations.messaging.service import EmailService
+from booking.integrations.messaging.stub import StubMailer
+from booking.integrations.payments.mock import MockUniPaymentGateway
+from booking.integrations.payments.service import PaymentService
 from booking.schemas.payment import PaymentIntentResponse, PaymentRead
 
 router = APIRouter(prefix="/api/v1/orders", tags=["client-payments"])
