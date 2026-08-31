@@ -9,6 +9,9 @@ from booking.routers.admin import clients, users
 from booking.routers.admin import events as admin_events
 from booking.routers.admin import settings as admin_settings
 from booking.routers.client import orders as client_orders
+from booking.routers.client import payments as client_payments
+from booking.routers.public import payments as public_payments
+from booking.routers.staff_panel import cashier as staff_cashier
 
 
 def create_app() -> FastAPI:
@@ -32,6 +35,9 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(admin_settings.router)
     app.include_router(admin_audit.router)
+    app.include_router(client_payments.router)
+    app.include_router(public_payments.router)
+    app.include_router(staff_cashier.router)
     return app
 
 

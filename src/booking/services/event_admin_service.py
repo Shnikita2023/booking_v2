@@ -29,7 +29,7 @@ class EventAdminService:
         EventStatus.PAUSED: {EventStatus.ON_SALE, EventStatus.CANCELLED},
         EventStatus.CANCELLED: set(),
         EventStatus.COMPLETED: set(),
-        EventStatus.MOVED: set(),
+        EventStatus.MOVED: {EventStatus.CANCELLED, EventStatus.COMPLETED},
     }
 
     def __init__(self, session: AsyncSession) -> None:
@@ -288,6 +288,13 @@ class EventAdminService:
                 "Event not found",
                 code="event_not_found",
                 status_code=status.HTTP_404_NOT_FOUND,
+            )
+        allowed = self._VALID_TRANSITIONS.get(event.status, set())
+        if EventStatus.MOVED not in allowed:
+            raise AppError(
+                f"Cannot move event in {event.status.value} status",
+                code="invalid_status_transition",
+                status_code=status.HTTP_409_CONFLICT,
             )
         await self._events.update(event, status=EventStatus.MOVED, starts_at=new_starts_at)
         await self._audit.record(

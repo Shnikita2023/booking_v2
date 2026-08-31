@@ -88,8 +88,7 @@ class AuthService:
                 payload={"email": email},
             )
             await self._register_failure(client)
-            if client is None:
-                await self._session.commit()
+            await self._session.commit()
             raise _login_failure_result(client)
         client.failed_attempts = 0
         pair = await self._issue_pair(UserType.CLIENT, client.id)
@@ -120,8 +119,7 @@ class AuthService:
                 payload={"email": email},
             )
             await self._register_failure(staff)
-            if staff is None:
-                await self._session.commit()
+            await self._session.commit()
             raise _login_failure_result(staff)
         staff.failed_attempts = 0
         await self._tokens.revoke_all_for_user(UserType.SYSTEM_USER, staff.id)

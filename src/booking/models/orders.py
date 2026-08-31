@@ -27,6 +27,7 @@ class OrderStatus(enum.StrEnum):
     RESERVED = "reserved"
     PAID = "paid"
     CANCELLED = "cancelled"
+    REFUNDED = "refunded"
 
 
 class TicketStatus(enum.StrEnum):
@@ -102,3 +103,8 @@ class Payment(UUIDPkMixin, TimestampMixin, Base):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     external_id: Mapped[str | None] = mapped_column(String(255), default=None)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), default=None, index=True)
+    method: Mapped[str] = mapped_column(String(16), default="card")
+    currency: Mapped[str] = mapped_column(String(8), default="RUB")
+    gateway: Mapped[str] = mapped_column(String(32), default="mock")
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

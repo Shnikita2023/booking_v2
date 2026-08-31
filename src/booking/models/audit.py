@@ -49,6 +49,11 @@ class AuditAction(enum.StrEnum):
     AUTH_LOGIN_OK = "auth_login_ok"
     AUTH_LOGIN_FAIL = "auth_login_fail"
     AUTH_LOGOUT = "auth_logout"
+    PAYMENT_CREATED = "payment_created"
+    PAYMENT_SUCCEEDED = "payment_succeeded"
+    PAYMENT_FAILED = "payment_failed"
+    PAYMENT_REFUNDED = "payment_refunded"
+    CASHIER_SALE = "cashier_sale"
 
 
 def _enum(enum_cls: type[enum.Enum], length: int) -> Enum:

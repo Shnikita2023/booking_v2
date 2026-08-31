@@ -103,8 +103,49 @@ async def test_event_lifecycle_actions(
     cancelled = await client.post(f"/api/v1/admin/events/{event_id}/cancel", headers=headers)
     assert cancelled.json()["status"] == "cancelled"
 
+
+async def test_event_complete_from_on_sale(
+    client: AsyncClient, staff_user: dict[str, str]
+) -> None:
+    """Test that ON_SALE → COMPLETED transition works."""
+    headers = _headers(staff_user["id"], role=RoleCode.ADMIN.value)
+    created = (
+        await client.post(
+            "/api/v1/admin/events",
+            headers=headers,
+            json={"title": "Festival", "starts_at": FUTURE.isoformat(), "sale_paused": False},
+        )
+    ).json()
+    event_id = created["id"]
+
+    resp = await client.post(f"/api/v1/admin/events/{event_id}/publish", headers=headers)
+    assert resp.json()["status"] == "on_sale"
+
     completed = await client.post(f"/api/v1/admin/events/{event_id}/complete", headers=headers)
     assert completed.json()["status"] == "completed"
+
+
+async def test_event_invalid_transition_rejected(
+    client: AsyncClient, staff_user: dict[str, str]
+) -> None:
+    """Test that invalid status transitions are rejected."""
+    headers = _headers(staff_user["id"], role=RoleCode.ADMIN.value)
+    created = (
+        await client.post(
+            "/api/v1/admin/events",
+            headers=headers,
+            json={"title": "Concert2", "starts_at": FUTURE.isoformat(), "sale_paused": False},
+        )
+    ).json()
+    event_id = created["id"]
+
+    # DRAFT → CANCELLED is allowed
+    cancelled = await client.post(f"/api/v1/admin/events/{event_id}/cancel", headers=headers)
+    assert cancelled.json()["status"] == "cancelled"
+
+    # CANCELLED → ON_SALE should be rejected
+    resp = await client.post(f"/api/v1/admin/events/{event_id}/publish", headers=headers)
+    assert resp.status_code == 409
 
 
 async def test_clone_event_copies_ticket_types(

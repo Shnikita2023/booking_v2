@@ -88,6 +88,7 @@ class SystemUserAdminService:
             payload=changes,
         )
         await self._session.commit()
+        await self._session.refresh(user, ["role"])
         return user
 
     async def reset_password(

@@ -154,6 +154,20 @@ class OrderService:
             raise AppError(
                 "Order not found", code="order_not_found", status_code=status.HTTP_404_NOT_FOUND
             )
+        return await self._cancel_order(order, actor=actor)
+
+    async def cancel_staff(
+        self, *, order_id: uuid.UUID, actor: Principal | None = None
+    ) -> Order:
+        """Staff cancel: no client_id scoping."""
+        order = await self._orders.get_with_tickets(order_id)
+        if order is None:
+            raise AppError(
+                "Order not found", code="order_not_found", status_code=status.HTTP_404_NOT_FOUND
+            )
+        return await self._cancel_order(order, actor=actor)
+
+    async def _cancel_order(self, order: Order, *, actor: Principal | None = None) -> Order:
         if order.status == OrderStatus.PAID:
             raise AppError(
                 "Paid order cannot be cancelled here",
