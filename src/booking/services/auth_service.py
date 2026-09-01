@@ -91,6 +91,7 @@ class AuthService:
             await self._session.commit()
             raise _login_failure_result(client)
         client.failed_attempts = 0
+        await self._tokens.revoke_all_for_user(UserType.CLIENT, client.id)
         pair = await self._issue_pair(UserType.CLIENT, client.id)
         await self._audit.record(
             action=AuditAction.AUTH_LOGIN_OK,

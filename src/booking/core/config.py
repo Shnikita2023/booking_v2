@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,16 @@ class Settings(BaseSettings):
     access_ttl_min: int = 15
     refresh_ttl_days: int = 14
     reservation_ttl_min: int = 15
+    webhook_secret: str = "webhook-change-me"
+
+    @model_validator(mode="after")
+    def _validate_prod_secrets(self) -> "Settings":
+        if self.app_env == "prod":
+            if self.jwt_secret == "change-me" or len(self.jwt_secret) < 32:
+                raise ValueError("jwt_secret must be set to a secure value (≥32 chars) in prod")
+            if self.webhook_secret == "webhook-change-me" or len(self.webhook_secret) < 32:
+                raise ValueError("webhook_secret must be set to a secure value (≥32 chars) in prod")
+        return self
 
 
 @lru_cache
