@@ -12,6 +12,7 @@ from booking.core.errors import AppError
 from booking.integrations.messaging.service import EmailService
 from booking.integrations.payments.gateway import GatewayEvent, PaymentGateway
 from booking.models.audit import AuditAction
+from booking.models.events import Event
 from booking.models.orders import (
     Order,
     OrderStatus,
@@ -19,6 +20,7 @@ from booking.models.orders import (
     PaymentStatus,
     TicketStatus,
 )
+from booking.repositories.clients import ClientRepository
 from booking.repositories.event import TicketTypeRepository
 from booking.repositories.orders import OrderRepository, TicketRepository
 from booking.repositories.payments import PaymentRepository
@@ -38,6 +40,7 @@ class PaymentService:
         self._orders = OrderRepository(session)
         self._payments = PaymentRepository(session)
         self._tickets = TicketRepository(session)
+        self._clients = ClientRepository(session)
         self._audit = AuditService(session)
 
     async def create_intent(
@@ -113,6 +116,22 @@ class PaymentService:
             if order is not None:
                 order.status = OrderStatus.PAID
                 order.reserved_until = None
+                client = await self._clients.get(order.client_id)
+                if client is not None:
+                    await self._email.payment_confirmation(
+                        to=client.email,
+                        order_id=str(order.id),
+                        amount=str(payment.amount),
+                    )
+                    ticket_ids = [str(t.id) for t in order.tickets]
+                    if ticket_ids:
+                        event_model = await self._session.get(Event, order.event_id)
+                        await self._email.eticket(
+                            to=client.email,
+                            order_id=str(order.id),
+                            event_title=event_model.title if event_model else "Event",
+                            tickets=ticket_ids,
+                        )
             await self._audit.record(
                 action=AuditAction.PAYMENT_SUCCEEDED,
                 entity_type="payment",
@@ -168,6 +187,13 @@ class PaymentService:
             payload={"method": "cash"},
         )
         await self._session.commit()
+        client = await self._clients.get(order.client_id)
+        if client is not None:
+            await self._email.payment_confirmation(
+                to=client.email,
+                order_id=str(order.id),
+                amount=str(payment.amount),
+            )
         return payment
 
     async def _release_quota_for_order(self, order: Order) -> None:
@@ -225,6 +251,13 @@ class PaymentService:
                 payload={"order_id": str(order_id)},
             )
             await self._session.commit()
+            client = await self._clients.get(order.client_id)
+            if client is not None:
+                await self._email.refund_processed(
+                    to=client.email,
+                    order_id=str(order.id),
+                    amount=str(order.total_amount),
+                )
         return payment
 
     async def staff_refund(
@@ -270,4 +303,11 @@ class PaymentService:
                 payload={"order_id": str(order_id)},
             )
             await self._session.commit()
+            client = await self._clients.get(order.client_id)
+            if client is not None:
+                await self._email.refund_processed(
+                    to=client.email,
+                    order_id=str(order.id),
+                    amount=str(order.total_amount),
+                )
         return payment

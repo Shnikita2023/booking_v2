@@ -4,22 +4,10 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from booking.core.deps import ClientPrincipal, SessionDep
-from booking.integrations.messaging.service import EmailService
-from booking.integrations.messaging.stub import StubMailer
-from booking.integrations.payments.mock import MockUniPaymentGateway
-from booking.integrations.payments.service import PaymentService
+from booking.core.deps import ClientPrincipal, PaymentServiceDep
 from booking.schemas.payment import PaymentIntentResponse, PaymentRead
 
 router = APIRouter(prefix="/api/v1/orders", tags=["client-payments"])
-
-
-def _get_service(session: SessionDep) -> PaymentService:
-    return PaymentService(
-        session,
-        gateway=MockUniPaymentGateway(),
-        email_service=EmailService(StubMailer(session)),
-    )
 
 
 @router.post(
@@ -33,10 +21,9 @@ def _get_service(session: SessionDep) -> PaymentService:
 async def create_payment_intent(
     order_id: uuid.UUID,
     principal: ClientPrincipal,
-    session: SessionDep,
+    service: PaymentServiceDep,
 ) -> PaymentIntentResponse:
-    svc = _get_service(session)
-    payment = await svc.create_intent(
+    payment = await service.create_intent(
         order_id=order_id, client_id=principal.user_id, actor=principal
     )
     external_id = payment.external_id or ""
@@ -57,10 +44,9 @@ async def create_payment_intent(
 async def refund_order(
     order_id: uuid.UUID,
     principal: ClientPrincipal,
-    session: SessionDep,
+    service: PaymentServiceDep,
 ) -> PaymentRead:
-    svc = _get_service(session)
-    payment = await svc.refund_order(
+    payment = await service.refund_order(
         order_id=order_id, client_id=principal.user_id, actor=principal
     )
     return PaymentRead.from_payment(payment)

@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from booking.models.users import RoleCode, SystemUser
 
@@ -35,7 +35,7 @@ class UserRead(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: str = Field(min_length=3, max_length=255)
+    email: EmailStr = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     role_code: RoleCode
 

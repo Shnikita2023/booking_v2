@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from booking.models.orders import Order, OrderStatus, Payment, Ticket
+from booking.models.orders import Order, OrderStatus, Ticket
 from booking.repositories.base import BaseRepository
 
 
@@ -82,7 +82,3 @@ class TicketRepository(BaseRepository[Ticket]):
         )
         result = await self._session.execute(stmt)
         return result.scalars().all()
-
-
-class PaymentRepository(BaseRepository[Payment]):
-    model = Payment

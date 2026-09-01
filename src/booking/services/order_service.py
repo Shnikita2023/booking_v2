@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from booking.core.config import Settings, get_settings
 from booking.core.dto import OrderItem, Principal
 from booking.core.errors import AppError
+from booking.integrations.messaging.service import EmailService
+from booking.integrations.messaging.stub import StubMailer
 from booking.models.audit import AuditAction
 from booking.models.orders import (
     Order,
@@ -20,13 +22,15 @@ from booking.models.orders import (
     Ticket,
     TicketStatus,
 )
+from booking.repositories.clients import ClientRepository
 from booking.repositories.event import EventRepository, TicketTypeRepository
 from booking.repositories.orders import (
     OrderRepository,
-    PaymentRepository,
     TicketRepository,
 )
+from booking.repositories.payments import PaymentRepository
 from booking.services.audit_service import AuditService
+from booking.services.discount_service import DiscountService
 
 
 class OrderService:
@@ -43,6 +47,9 @@ class OrderService:
         self._events = EventRepository(session)
         self._ticket_types = TicketTypeRepository(session)
         self._audit = AuditService(session)
+        self._discounts = DiscountService(session)
+        self._clients = ClientRepository(session)
+        self._email = EmailService(StubMailer(session))
 
     async def reserve(
         self,
@@ -107,7 +114,17 @@ class OrderService:
                     )
                 )
         order.total_amount = total
-        await self._payments.create(order_id=order.id, status=PaymentStatus.PENDING, amount=total)
+        discount_pct = await self._discounts.get_effective_discount(
+            client_id=client_id, event_id=event_id
+        )
+        if discount_pct > 0:
+            discount_amount = (total * Decimal(discount_pct) / Decimal(100)).quantize(
+                Decimal("0.01")
+            )
+            order.total_amount = total - discount_amount
+        await self._payments.create(
+            order_id=order.id, status=PaymentStatus.PENDING, amount=order.total_amount
+        )
         await self._audit.record(
             action=AuditAction.ORDER_RESERVE,
             entity_type="order",
@@ -195,6 +212,13 @@ class OrderService:
             actor=actor,
         )
         await self._session.commit()
+        client = await self._clients.get(order.client_id)
+        if client is not None:
+            await self._email.order_cancelled(
+                to=client.email,
+                order_id=str(order.id),
+                reason="Cancelled by user",
+            )
         return order
 
     async def list_for_client(
@@ -204,14 +228,10 @@ class OrderService:
         orders, total = await self._orders.list_for_client(client_id, limit=limit, offset=offset)
         return list(orders), total
 
-    async def get_client_order(self, *, order_id: uuid.UUID, client_id: uuid.UUID) -> Order:
-        """Return a single client-owned order, or raise if not found."""
-        order = await self._orders.get_owned(order_id, client_id)
-        if order is None:
-            raise AppError(
-                "Order not found", code="order_not_found", status_code=status.HTTP_404_NOT_FOUND
-            )
-        return order
+    async def list_all(self, *, limit: int = 50, offset: int = 0) -> list[Order]:
+        """Return a paginated list of all orders (staff view)."""
+        orders = await self._orders.list(limit=limit, offset=offset)
+        return list(orders)
 
     async def cleanup_expired(self) -> int:
         """Cancel expired RESERVED orders, releasing quota exactly once per order.

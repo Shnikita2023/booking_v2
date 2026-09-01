@@ -5,29 +5,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from booking.core.deps import SessionDep, require_role
+from booking.core.deps import OrderServiceDep, PaymentServiceDep, require_role
 from booking.core.dto import OrderItem, Principal
-from booking.integrations.messaging.service import EmailService
-from booking.integrations.messaging.stub import StubMailer
-from booking.integrations.payments.mock import MockUniPaymentGateway
-from booking.integrations.payments.service import PaymentService
 from booking.models.users import RoleCode
-from booking.repositories.orders import OrderRepository
 from booking.schemas.order import OrderCreateRequest, OrderListResponse, OrderRead
 from booking.schemas.payment import PaymentRead
-from booking.services.order_service import OrderService
 
 AdminManager = Annotated[Principal, Depends(require_role(RoleCode.ADMIN, RoleCode.MANAGER))]
 
 router = APIRouter(prefix="/api/v1/staff/orders", tags=["staff-cashier"])
-
-
-def _get_payment_service(session: SessionDep) -> PaymentService:
-    return PaymentService(
-        session,
-        gateway=MockUniPaymentGateway(),
-        email_service=EmailService(StubMailer(session)),
-    )
 
 
 @router.post(
@@ -39,11 +25,11 @@ def _get_payment_service(session: SessionDep) -> PaymentService:
 )
 async def cashier_sell(
     body: OrderCreateRequest,
-    session: SessionDep,
+    order_service: OrderServiceDep,
+    payment_service: PaymentServiceDep,
     _principal: AdminManager,
 ) -> OrderRead:
-    order_svc = OrderService(session)
-    order = await order_svc.reserve(
+    order = await order_service.reserve(
         client_id=uuid.uuid4(),  # anonymous/overridden by staff
         event_id=body.event_id,
         items=[
@@ -52,8 +38,7 @@ async def cashier_sell(
         ],
         actor=_principal,
     )
-    pay_svc = _get_payment_service(session)
-    await pay_svc.confirm_cash(
+    await payment_service.confirm_cash(
         order_id=order.id, client_id=order.client_id, actor=_principal
     )
     return OrderRead.from_order(order)
@@ -68,11 +53,10 @@ async def cashier_sell(
 )
 async def staff_refund(
     order_id: uuid.UUID,
-    session: SessionDep,
+    payment_service: PaymentServiceDep,
     _principal: AdminManager,
 ) -> PaymentRead:
-    svc = _get_payment_service(session)
-    payment = await svc.staff_refund(order_id=order_id, actor=_principal)
+    payment = await payment_service.staff_refund(order_id=order_id, actor=_principal)
     return PaymentRead.from_payment(payment)
 
 
@@ -85,11 +69,10 @@ async def staff_refund(
 )
 async def staff_cancel(
     order_id: uuid.UUID,
-    session: SessionDep,
+    order_service: OrderServiceDep,
     _principal: AdminManager,
 ) -> OrderRead:
-    order_svc = OrderService(session)
-    order = await order_svc.cancel_staff(order_id=order_id, actor=_principal)
+    order = await order_service.cancel_staff(order_id=order_id, actor=_principal)
     return OrderRead.from_order(order)
 
 
@@ -100,13 +83,12 @@ async def staff_cancel(
     response_model=OrderListResponse,
 )
 async def staff_list_orders(
-    session: SessionDep,
+    order_service: OrderServiceDep,
     _principal: AdminManager,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> OrderListResponse:
-    repo = OrderRepository(session)
-    orders = await repo.list(limit=limit, offset=offset)
+    orders = await order_service.list_all(limit=limit, offset=offset)
     return OrderListResponse(
         items=[OrderRead.from_order(o) for o in orders], total=len(orders)
     )

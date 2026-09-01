@@ -97,9 +97,15 @@ async def require_client(principal: Principal = Depends(get_current_principal)) 
 
 ClientPrincipal = Annotated[Principal, Depends(require_client)]
 
+from booking.integrations.messaging.service import EmailService  # noqa: E402
+from booking.integrations.messaging.stub import StubMailer  # noqa: E402
+from booking.integrations.payments.mock import MockUniPaymentGateway  # noqa: E402
+from booking.integrations.payments.service import PaymentService  # noqa: E402
 from booking.services.audit_service import AuditService  # noqa: E402
 from booking.services.client_admin_service import ClientAdminService  # noqa: E402
 from booking.services.event_admin_service import EventAdminService  # noqa: E402
+from booking.services.order_service import OrderService  # noqa: E402
+from booking.services.report_service import ReportService  # noqa: E402
 from booking.services.settings_service import SettingsService  # noqa: E402
 from booking.services.user_admin_service import SystemUserAdminService  # noqa: E402
 
@@ -124,8 +130,27 @@ def _audit_service(session: SessionDep) -> AuditService:
     return AuditService(session)
 
 
+def _report_service(session: SessionDep) -> ReportService:
+    return ReportService(session)
+
+
+def _payment_service(session: SessionDep) -> PaymentService:
+    return PaymentService(
+        session,
+        gateway=MockUniPaymentGateway(),
+        email_service=EmailService(StubMailer(session)),
+    )
+
+
+def _order_service(session: SessionDep) -> OrderService:
+    return OrderService(session)
+
+
 EventAdminServiceDep = Annotated[EventAdminService, Depends(_event_admin_service)]
 ClientAdminServiceDep = Annotated[ClientAdminService, Depends(_client_admin_service)]
 SystemUserAdminServiceDep = Annotated[SystemUserAdminService, Depends(_system_user_admin_service)]
 SettingsServiceDep = Annotated[SettingsService, Depends(_settings_service)]
 AuditServiceDep = Annotated[AuditService, Depends(_audit_service)]
+ReportServiceDep = Annotated[ReportService, Depends(_report_service)]
+PaymentServiceDep = Annotated[PaymentService, Depends(_payment_service)]
+OrderServiceDep = Annotated[OrderService, Depends(_order_service)]

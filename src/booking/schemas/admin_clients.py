@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from booking.models.clients import Client
 
@@ -37,7 +37,7 @@ class ClientRead(BaseModel):
 
 
 class ClientCreate(BaseModel):
-    email: str = Field(min_length=3, max_length=255)
+    email: EmailStr = Field(min_length=3, max_length=255)
     full_name: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=32)
     password: str = Field(min_length=8, max_length=128)
