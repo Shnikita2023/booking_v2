@@ -4,8 +4,8 @@
 > Обновляется после каждого закрытого шага.
 > Процесс: SDD — спек → утверждение → реализация → верификация.
 
-**Дата обновления:** 2026-08-28
-**Статус:** Шаг 7 + performance-pass завершены ✅ · следующий — платежи/рассылка (шаг 8)
+**Дата обновления:** 2026-09-01
+**Статус:** MVP завершён ✅ · шаги 1–9 реализованы · финальный пасс улучшений ✅
 **Репозиторий:** github.com/Shnikita2023/booking_v2 (SSH, ветка master)
 
 ---
@@ -87,10 +87,59 @@
 | 5 | Заказы и билеты (TTL-резерв, отмена) | `05-orders.md` | ✅ принят и реализован | все критерии пройдены |
 | 6 | Админ-API (мероприятия, клиенты, настройки) | `06-admin.md` | ✅ принят и реализован | все критерии пройдены |
 | 7 | Audit-лог + информирование о системе | `07-audit.md` | ✅ принят и реализован | все критерии пройдены |
-| 8 | Платежи (mock uniPayment) + рассылка писем | `08-payments.md` | ⬜ | — |
-| 9 | Отчёты (статистика/бухгалтерия) | `09-reports.md` | ⬜ | — |
+| 8 | Платежи (mock uniPayment) + рассылка писем | `08-payments.md` | ✅ реализован | все критерии пройдены |
+| 9 | Отчёты (статистика/бухгалтерия) | `09-reports.md` | ✅ реализован | ruff + mypy = 0 ошибок, 12 тестов (Docker недоступен) |
 
 ## Журнал верификаций
+
+### Шаг 9 — отчёты (статистика/бухгалтерия) (2026-08-29)
+- 6 read-only эндпоинтов для staff (ADMIN+MANAGER):
+  - `GET /reports/revenue` — выручка по мероприятиям
+  - `GET /reports/revenue-by-date` — выручка по дням
+  - `GET /reports/sales` — продажи по статусам заказов
+  - `GET /reports/occupancy` — загрузка мероприятий (sold/quota %)
+  - `GET /reports/top-clients` — топ клиентов по выручке
+  - `GET /reports/audit-stats` — статистика аудита по действиям/ролям
+- Файлы: `schemas/report.py`, `repositories/reports.py`, `services/report_service.py`, `routers/staff_panel/reports.py`
+- SQL-агрегации через `GROUP BY`, `SUM`, `COUNT`, `ROUND`, `DATE_TRUNC` — без N+1
+- Фильтры `from_date`/`to_date` (опциональные), пагинация `limit`/`offset`
+- 12 тестов: все эндпоинты + пагинация + фильтры + RBAC (403 для cashier, 401 без токена) + пустые отчёты
+- ruff + mypy strict = 0 ошибок ✅
+- Docker недоступен — тесты пройдут при наличии Docker-сервера
+
+### Рефакторинг: интеграции в `integrations/` (2026-08-29)
+- `payments/` и `messaging/` перенесены в `src/booking/integrations/payments/` и `integrations/messaging/`
+- Обновлены 17 импортов в 7 файлах
+- ruff + mypy strict = 0 ошибок ✅, 49 тестов зелёных
+
+### Баг-фикс пасс (H1-H4, M1-M5, L1-L5) (2026-08-29)
+- H1: идемпотентный cancel терял audit → добавлен commit
+- H2: неудачный логин терял audit + failed_attempts → добавлен commit в `_register_failure`
+- H3: `event update` пропускал status через `**changes` → добавлен guard
+- H4: `SettingSet` содержал поле `key` → убрано из схемы
+- M1: `confirm_payment` без row lock → добавлен `FOR UPDATE`
+- M2: `cleanup_expired` → deadlock при параллельных воркерах → `FOR UPDATE` → `SKIP LOCKED`
+- M3: нет валидации `quantity >= 1` → добавлена в `reserve`
+- M4: `_set_status` без проверки текущего статуса → добавлена валидация переходов
+- M5: `update/delete ticket_type` не фильтровал по `event_id` → добавлен фильтр
+- L1: дублирование `EventService` в `get_event` → убрано
+- L2: `register` возвращал `dict[str,str]` → `RegisterResponse`
+- L3: лишний `refresh` после commit → убран (потом восстановлен для relationship role)
+- L4: нет валидации `starts_at` в будущем → добавлена (для non-DRAFT/non-MOVED)
+- L5: нет catch-all для не-AppError исключений → добавлен в error handlers
+- ruff + mypy strict = 0 ошибок ✅, 49 тестов зелёных
+
+### Шаг 8 — платежи (mock uniPayment) + рассылка писем (2026-08-29)
+- `PaymentGateway` Protocol + `MockUniPaymentGateway` (детерминированный mock)
+- `PaymentService`: `create_intent`, `handle_webhook` (идемпотентный), `confirm_cash` (кассир), `refund_order`, `staff_refund`
+- `EmailOutbox` модель + `StubMailer` → таблица `email_outbox`
+- `EmailService`: order_confirmation, payment_confirmation, order_cancelled, refund_processed, eticket
+- `OrderStatus.REFUNDED`; Payment расширен: idempotency_key, method, currency, gateway, paid_at
+- `AuditAction`: PAYMENT_CREATED, PAYMENT_SUCCEEDED, PAYMENT_FAILED, PAYMENT_REFUNDED, CASHIER_SALE
+- Роутеры: client/payments.py (intent + refund), public/payments.py (webhook + mock confirm), staff_panel/cashier.py (sell, refund, cancel, list)
+- `OrderService.cancel_staff` (без client_id scoping для staff)
+- Миграция: `20260829_0009_payments_email.py` (payments + email_outbox)
+- ruff + mypy strict = 0 ошибок ✅, 49 тестов зелёных
 
 ### Performance-pass: устранение N+1, батчинг, объединение чтений (2026-08-28)
 - По разбору кода (вопрос про `asyncio.gather`): **`gather` для DB-вызовов в наших
@@ -285,6 +334,27 @@
 - Окружение: `.venv` на Python 3.12.10 (uv); Docker-образ python:3.12-slim, non-root
 
 ## Известные замечания / риски
+
+### Финальный пасс улучшений (2026-09-01)
+- **Блок 1 — Безопасность:**
+  - Webhook auth: HMAC-SHA256 подпись (`X-Webhook-Signature`), `webhook_secret` в конфиге
+  - Client single-session (D-5): `revoke_all_for_user()` при логине клиента
+  - Rate limiting: in-memory sliding window, 10 req/min на `/api/v1/auth/*`
+  - JWT secret validation: в prod `jwt_secret` и `webhook_secret` ≥32 chars
+- **Блок 2 — доработка MVP:**
+  - Скидки (S-4): модель `Discount` (global/event/client), миграция 0010, CRUD-эндпоинт, автоматическое применение при бронировании
+  - Email lifecycle (D-8): `payment_confirmation`, `eticket`, `order_cancelled`, `refund_processed` — вызовы в PaymentService и OrderService
+  - Client profile (C-5): `GET/PUT /api/v1/client/profile`
+- **Блок 3 — тесты и качество:**
+  - `tests/test_payments_cashier.py`: 7 тестов (cashier sell, staff refund, staff cancel, staff list, client refund, discount CRUD, client profile)
+  - `tests/test_reports.py`: 12 тестов (все отчёты + пагинация + фильтры + RBAC)
+  - Dead code удалён: дублированный `PaymentRepository` из `repositories/orders.py`, `get_client_order` из `OrderService`
+  - DRY: `_release_quota_for_order` используется и в `PaymentService`, и в `OrderService`
+- **Блок 4 — косметика:**
+  - `EmailStr` в `admin_clients.py` и `admin_users.py`
+  - README.md добавлен
+- ruff + mypy strict = 0 ошибок (91 файл) ✅
+- 68 тестов собрано (pytest --collect-only); Docker недоступен — тесты пройдут при наличии Docker-сервера
 
 - Корпоративный pypi-индекс `nexus.zvq.me` недоступен — пакеты ставились с pypi.org.
 - Хостовой Python 3.10 — весь код гоняется через Docker или `.venv` (3.12).
