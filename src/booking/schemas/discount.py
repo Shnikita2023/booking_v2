@@ -41,11 +41,12 @@ class DiscountRead(BaseModel):
 
     @classmethod
     def from_discount(cls, discount: Discount) -> "DiscountRead":
+        dt = discount.discount_type
         return cls(
             id=discount.id,
             name=discount.name,
             percent=discount.percent,
-            discount_type=discount.discount_type.value,
+            discount_type=dt.value if hasattr(dt, "value") else str(dt),
             event_id=discount.event_id,
             client_id=discount.client_id,
             valid_from=discount.valid_from,

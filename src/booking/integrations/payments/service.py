@@ -116,17 +116,18 @@ class PaymentService:
             if order is not None:
                 order.status = OrderStatus.PAID
                 order.reserved_until = None
-                client = await self._clients.get(order.client_id)
-                if client is not None:
-                    await self._email.payment_confirmation(
-                        to=client.email,
-                        order_id=str(order.id),
-                        amount=str(payment.amount),
-                    )
-                    ticket_ids = [str(t.id) for t in order.tickets]
-                    if ticket_ids:
-                        event_model = await self._session.get(Event, order.event_id)
-                        await self._email.eticket(
+                if order.client_id is not None:
+                    client = await self._clients.get(order.client_id)
+                    if client is not None:
+                        await self._email.payment_confirmation(
+                            to=client.email,
+                            order_id=str(order.id),
+                            amount=str(payment.amount),
+                        )
+                        ticket_ids = [str(t.id) for t in order.tickets]
+                        if ticket_ids:
+                            event_model = await self._session.get(Event, order.event_id)
+                            await self._email.eticket(
                             to=client.email,
                             order_id=str(order.id),
                             event_title=event_model.title if event_model else "Event",
@@ -155,11 +156,14 @@ class PaymentService:
         self,
         *,
         order_id: uuid.UUID,
-        client_id: uuid.UUID,
+        client_id: uuid.UUID | None,
         actor: Principal | None = None,
     ) -> Payment:
         """Cashier: immediately confirm payment (no redirect)."""
-        order = await self._orders.get_owned(order_id, client_id, lock=True)
+        if client_id is not None:
+            order = await self._orders.get_owned(order_id, client_id, lock=True)
+        else:
+            order = await self._orders.get_with_tickets(order_id)
         if order is None:
             raise AppError(
                 "Order not found", code="order_not_found", status_code=status.HTTP_404_NOT_FOUND
@@ -187,13 +191,14 @@ class PaymentService:
             payload={"method": "cash"},
         )
         await self._session.commit()
-        client = await self._clients.get(order.client_id)
-        if client is not None:
-            await self._email.payment_confirmation(
-                to=client.email,
-                order_id=str(order.id),
-                amount=str(payment.amount),
-            )
+        if order.client_id is not None:
+            client = await self._clients.get(order.client_id)
+            if client is not None:
+                await self._email.payment_confirmation(
+                    to=client.email,
+                    order_id=str(order.id),
+                    amount=str(payment.amount),
+                )
         return payment
 
     async def _release_quota_for_order(self, order: Order) -> None:
@@ -251,13 +256,14 @@ class PaymentService:
                 payload={"order_id": str(order_id)},
             )
             await self._session.commit()
-            client = await self._clients.get(order.client_id)
-            if client is not None:
-                await self._email.refund_processed(
-                    to=client.email,
-                    order_id=str(order.id),
-                    amount=str(order.total_amount),
-                )
+            if order.client_id is not None:
+                client = await self._clients.get(order.client_id)
+                if client is not None:
+                    await self._email.refund_processed(
+                        to=client.email,
+                        order_id=str(order.id),
+                        amount=str(order.total_amount),
+                    )
         return payment
 
     async def staff_refund(
@@ -303,11 +309,12 @@ class PaymentService:
                 payload={"order_id": str(order_id)},
             )
             await self._session.commit()
-            client = await self._clients.get(order.client_id)
-            if client is not None:
-                await self._email.refund_processed(
-                    to=client.email,
-                    order_id=str(order.id),
-                    amount=str(order.total_amount),
-                )
+            if order.client_id is not None:
+                client = await self._clients.get(order.client_id)
+                if client is not None:
+                    await self._email.refund_processed(
+                        to=client.email,
+                        order_id=str(order.id),
+                        amount=str(order.total_amount),
+                    )
         return payment

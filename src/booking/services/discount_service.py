@@ -20,7 +20,7 @@ class DiscountService:
         self._repo = DiscountRepository(session)
 
     async def create(self, data: DiscountCreate) -> Discount:
-        return await self._repo.create(
+        discount = await self._repo.create(
             name=data.name,
             percent=data.percent,
             discount_type=DiscountType(data.discount_type),
@@ -30,6 +30,8 @@ class DiscountService:
             valid_until=data.valid_until,
             is_active=data.is_active,
         )
+        await self._session.commit()
+        return discount
 
     async def get(self, discount_id: uuid.UUID) -> Discount:
         discount = await self._repo.get(discount_id)
@@ -47,7 +49,9 @@ class DiscountService:
     async def update(self, discount_id: uuid.UUID, data: DiscountUpdate) -> Discount:
         discount = await self.get(discount_id)
         updates = data.model_dump(exclude_unset=True)
-        return await self._repo.update(discount, **updates)
+        updated = await self._repo.update(discount, **updates)
+        await self._session.commit()
+        return updated
 
     async def delete(self, discount_id: uuid.UUID) -> None:
         if not await self._repo.soft_delete(discount_id):
@@ -56,6 +60,7 @@ class DiscountService:
                 code="discount_not_found",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
+        await self._session.commit()
 
     async def get_effective_discount(
         self,

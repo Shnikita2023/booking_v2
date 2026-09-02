@@ -50,6 +50,7 @@ async def event_with_tickets(web_session: AsyncSession) -> Event:
     tt2 = TicketType(event_id=event.id, name="Standard", price=Decimal("100.00"), quota=50, sold=0)
     web_session.add_all([tt1, tt2])
     await web_session.flush()
+    await web_session.refresh(event, ["ticket_types"])
     return event
 
 

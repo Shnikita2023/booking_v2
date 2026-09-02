@@ -45,7 +45,9 @@ class PaymentStatus(enum.StrEnum):
 class Order(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, VersionedMixin, Base):
     __tablename__ = "orders"
 
-    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), index=True)
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clients.id"), index=True, nullable=True
+    )
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id"), index=True)
     status: Mapped[OrderStatus] = mapped_column(
         Enum(

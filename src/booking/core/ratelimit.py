@@ -9,6 +9,15 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+# Global registry for test reset
+_instances: list["RateLimitMiddleware"] = []
+
+
+def reset_all_rate_limiters() -> None:
+    """Reset all rate limiter instances (for tests)."""
+    for inst in _instances:
+        inst.reset()
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Per-IP rate limiter with sliding window.
@@ -31,6 +40,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._max_requests = max_requests
         self._window = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
+        _instances.append(self)
 
     def _get_client_ip(self, request: Request) -> str:
         forwarded = request.headers.get("X-Forwarded-For")
@@ -65,3 +75,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         result = await call_next(request)
         return result
+
+    def reset(self) -> None:
+        """Clear all rate limit counters (for tests)."""
+        self._requests.clear()

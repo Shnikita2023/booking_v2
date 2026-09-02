@@ -57,6 +57,19 @@ class OrderRepository(BaseRepository[Order]):
         total = (await self._session.execute(count_stmt)).scalar_one()
         return orders, total
 
+    async def list_with_tickets(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> Sequence[Order]:
+        stmt = (
+            self._base_select()
+            .options(selectinload(Order.tickets))
+            .order_by(Order.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalars().all()
+
     async def list_expired(self, now: object) -> Sequence[Order]:
         stmt = (
             select(Order)

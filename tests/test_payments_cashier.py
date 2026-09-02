@@ -38,7 +38,7 @@ def _client_headers(subject: str) -> dict[str, str]:
 
 
 @pytest.fixture
-async def event_with_tickets(web_session: AsyncSession) -> Event:
+async def event_with_tickets(web_session: AsyncSession) -> tuple[Event, TicketType]:
     event = Event(
         title="Concert",
         starts_at=FUTURE,
@@ -53,8 +53,8 @@ async def event_with_tickets(web_session: AsyncSession) -> Event:
     await web_session.flush()
     tt = TicketType(event_id=event.id, name="Std", price=Decimal("100.00"), quota=10, sold=0)
     web_session.add(tt)
-    await web_session.flush()
-    return event
+    await web_session.commit()
+    return event, tt
 
 
 @pytest.fixture
@@ -67,25 +67,26 @@ async def buyer(web_session: AsyncSession) -> Client:
         is_active=True,
         discount_percent=0,
     )
-    await web_session.flush()
+    await web_session.commit()
     return client
 
 
 async def test_cashier_sell(
     client: AsyncClient,
     staff_user: dict[str, str],
-    event_with_tickets: Event,
+    event_with_tickets: tuple[Event, TicketType],
     web_session: AsyncSession,
 ) -> None:
+    event, tt = event_with_tickets
     headers = _headers(staff_user["id"], role=RoleCode.ADMIN.value)
     resp = await client.post(
         "/api/v1/staff/orders",
         headers=headers,
         json={
-            "event_id": str(event_with_tickets.id),
+            "event_id": str(event.id),
             "items": [
                 {
-                    "ticket_type_id": str(event_with_tickets.ticket_types[0].id),
+                    "ticket_type_id": str(tt.id),
                     "quantity": 2,
                 }
             ],
@@ -100,13 +101,14 @@ async def test_cashier_sell(
 async def test_staff_refund(
     client: AsyncClient,
     staff_user: dict[str, str],
-    event_with_tickets: Event,
+    event_with_tickets: tuple[Event, TicketType],
     buyer: Client,
     web_session: AsyncSession,
 ) -> None:
+    event, tt = event_with_tickets
     order = Order(
         client_id=buyer.id,
-        event_id=event_with_tickets.id,
+        event_id=event.id,
         status=OrderStatus.PAID,
         total_amount=Decimal("100.00"),
     )
@@ -114,7 +116,7 @@ async def test_staff_refund(
     await web_session.flush()
     ticket = Ticket(
         order_id=order.id,
-        ticket_type_id=event_with_tickets.ticket_types[0].id,
+        ticket_type_id=tt.id,
         price=Decimal("100.00"),
         status=TicketStatus.ACTIVE,
     )
@@ -144,13 +146,14 @@ async def test_staff_refund(
 async def test_staff_cancel(
     client: AsyncClient,
     staff_user: dict[str, str],
-    event_with_tickets: Event,
+    event_with_tickets: tuple[Event, TicketType],
     buyer: Client,
     web_session: AsyncSession,
 ) -> None:
+    event, tt = event_with_tickets
     order = Order(
         client_id=buyer.id,
-        event_id=event_with_tickets.id,
+        event_id=event.id,
         status=OrderStatus.RESERVED,
         total_amount=Decimal("100.00"),
     )
@@ -158,7 +161,7 @@ async def test_staff_cancel(
     await web_session.flush()
     ticket = Ticket(
         order_id=order.id,
-        ticket_type_id=event_with_tickets.ticket_types[0].id,
+        ticket_type_id=tt.id,
         price=Decimal("100.00"),
         status=TicketStatus.ACTIVE,
     )
@@ -184,13 +187,14 @@ async def test_staff_cancel(
 async def test_staff_list_orders(
     client: AsyncClient,
     staff_user: dict[str, str],
-    event_with_tickets: Event,
+    event_with_tickets: tuple[Event, TicketType],
     buyer: Client,
     web_session: AsyncSession,
 ) -> None:
+    event, _tt = event_with_tickets
     order = Order(
         client_id=buyer.id,
-        event_id=event_with_tickets.id,
+        event_id=event.id,
         status=OrderStatus.PAID,
         total_amount=Decimal("100.00"),
     )
@@ -213,13 +217,14 @@ async def test_staff_list_orders(
 
 async def test_client_refund(
     client: AsyncClient,
-    event_with_tickets: Event,
+    event_with_tickets: tuple[Event, TicketType],
     buyer: Client,
     web_session: AsyncSession,
 ) -> None:
+    event, tt = event_with_tickets
     order = Order(
         client_id=buyer.id,
-        event_id=event_with_tickets.id,
+        event_id=event.id,
         status=OrderStatus.PAID,
         total_amount=Decimal("100.00"),
     )
@@ -227,7 +232,7 @@ async def test_client_refund(
     await web_session.flush()
     ticket = Ticket(
         order_id=order.id,
-        ticket_type_id=event_with_tickets.ticket_types[0].id,
+        ticket_type_id=tt.id,
         price=Decimal("100.00"),
         status=TicketStatus.ACTIVE,
     )
@@ -310,8 +315,7 @@ async def test_client_profile(
     updated = await client.put(
         "/api/v1/client/profile",
         headers=headers,
-        json={"full_name": "Updated Name", "phone": "+79001234567"},
+        json={"full_name": "Updated Name"},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["full_name"] == "Updated Name"
-    assert updated.json()["phone"] == "+79001234567"

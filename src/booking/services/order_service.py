@@ -54,7 +54,7 @@ class OrderService:
     async def reserve(
         self,
         *,
-        client_id: uuid.UUID,
+        client_id: uuid.UUID | None,
         event_id: uuid.UUID,
         items: list[OrderItem],
         actor: Principal | None = None,
@@ -212,13 +212,14 @@ class OrderService:
             actor=actor,
         )
         await self._session.commit()
-        client = await self._clients.get(order.client_id)
-        if client is not None:
-            await self._email.order_cancelled(
-                to=client.email,
-                order_id=str(order.id),
-                reason="Cancelled by user",
-            )
+        if order.client_id is not None:
+            client = await self._clients.get(order.client_id)
+            if client is not None:
+                await self._email.order_cancelled(
+                    to=client.email,
+                    order_id=str(order.id),
+                    reason="Cancelled by user",
+                )
         return order
 
     async def list_for_client(
@@ -230,7 +231,7 @@ class OrderService:
 
     async def list_all(self, *, limit: int = 50, offset: int = 0) -> list[Order]:
         """Return a paginated list of all orders (staff view)."""
-        orders = await self._orders.list(limit=limit, offset=offset)
+        orders = await self._orders.list_with_tickets(limit=limit, offset=offset)
         return list(orders)
 
     async def cleanup_expired(self) -> int:

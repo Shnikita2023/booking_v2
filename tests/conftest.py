@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from testcontainers.community.postgres import PostgresContainer
 
+from booking.core.ratelimit import reset_all_rate_limiters
 from booking.db.engine import get_engine, get_session
 from booking.main import app
 from booking.models import Base
@@ -19,6 +20,12 @@ from booking.models import Base
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 pytest_plugins = ["tests.factories"]
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset in-memory rate limiter before each test to avoid 429 cross-contamination."""
+    reset_all_rate_limiters()
 
 
 @pytest.fixture(scope="session")

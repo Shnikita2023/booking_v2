@@ -30,7 +30,7 @@ async def cashier_sell(
     _principal: AdminManager,
 ) -> OrderRead:
     order = await order_service.reserve(
-        client_id=uuid.uuid4(),  # anonymous/overridden by staff
+        client_id=None,  # anonymous cashier sale
         event_id=body.event_id,
         items=[
             OrderItem(ticket_type_id=item.ticket_type_id, quantity=item.quantity)

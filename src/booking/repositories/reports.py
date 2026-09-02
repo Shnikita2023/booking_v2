@@ -55,9 +55,10 @@ class ReportRepository:
         from_date: datetime | None = None,
         to_date: datetime | None = None,
     ) -> Sequence[dict[str, Any]]:
+        date_col = func.date_trunc("day", Payment.paid_at).label("date")
         stmt = (
             select(
-                func.date_trunc("day", Payment.paid_at).label("date"),
+                date_col,
                 func.sum(Payment.amount).label("total_revenue"),
                 func.count(Payment.id).label("payment_count"),
             )
@@ -70,9 +71,7 @@ class ReportRepository:
             stmt = stmt.where(Payment.paid_at >= from_date)
         if to_date is not None:
             stmt = stmt.where(Payment.paid_at <= to_date)
-        stmt = stmt.group_by(func.date_trunc("day", Payment.paid_at)).order_by(
-            func.date_trunc("day", Payment.paid_at)
-        )
+        stmt = stmt.group_by(date_col).order_by(date_col)
         result = await self._session.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
 
