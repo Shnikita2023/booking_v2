@@ -14,9 +14,9 @@ import type { RevenueReport, RevenueByDateReport, SalesReport, OccupancyReport, 
 // ── Auth ──
 export const auth = {
   staffLogin: (data: LoginRequest) =>
-    client.post<TokenResponse>('/auth/staff/login', data),
+    client.post<TokenResponse>('/staff/login', data),
   clientLogin: (data: LoginRequest) =>
-    client.post<TokenResponse>('/auth/client/login', data),
+    client.post<TokenResponse>('/auth/login', data),
   refresh: (refresh_token: string) =>
     client.post<TokenResponse>('/auth/refresh', { refresh_token }),
   me: () => client.get<MeResponse>('/auth/me'),
